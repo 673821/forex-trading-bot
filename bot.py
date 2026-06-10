@@ -1,6 +1,6 @@
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -9,9 +9,47 @@ TWELVE_DATA_API_KEY = os.environ["TWELVE_DATA_API_KEY"]
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY"]
 TIMEFRAMES = ["15min", "1h", "4h"]
 
+PAIR_CURRENCIES = {
+    "EUR/USD": ["EUR", "USD"],
+    "GBP/USD": ["GBP", "USD"],
+    "USD/JPY": ["USD", "JPY"]
+}
+
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"})
+
+def get_high_impact_news(pair):
+    try:
+        currencies = PAIR_CURRENCIES.get(pair, [])
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+        r = requests.get(url, timeout=10)
+        events = r.json()
+
+        now = datetime.now(timezone.utc)
+        danger_events = []
+        warning_events = []
+
+        for event in events:
+            if event.get("impact") != "High":
+                continue
+            if event.get("currency") not in currencies:
+                continue
+            try:
+                event_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
+            except:
+                continue
+
+            diff_minutes = (event_time - now).total_seconds() / 60
+
+            if -30 <= diff_minutes <= 120:
+                danger_events.append(event["title"])
+            elif 120 < diff_minutes <= 480:
+                warning_events.append(event["title"])
+
+        return danger_events, warning_events
+    except:
+        return [], []
 
 def get_price_data(pair, interval="15min", outputsize=50):
     params = {
@@ -78,7 +116,6 @@ def analyze_timeframe(pair, interval):
     atr = calc_atr(highs, lows, closes)
     if rsi is None or macd is None or atr is None:
         return None
-
     if rsi < 35 and macd > signal:
         return {"direction": "BUY", "rsi": rsi, "atr": atr, "price": closes[-1]}
     elif rsi > 65 and macd < signal:
@@ -116,7 +153,6 @@ def analyze_pair(pair):
         sl = round(price + atr, 6)
 
     rr = round(abs(tp - price) / abs(sl - price), 2)
-    strength = len(confirmed_tfs)
 
     return {
         "pair": pair,
@@ -125,7 +161,7 @@ def analyze_pair(pair):
         "tp": tp,
         "sl": sl,
         "rr": rr,
-        "strength": strength,
+        "strength": len(confirmed_tfs),
         "confirmed_tfs": confirmed_tfs,
         "details": results
     }
@@ -146,6 +182,21 @@ def main():
         if not trade:
             continue
 
+        danger_news, warning_news = get_high_impact_news(pair)
+
+        if danger_news:
+            print(f"[{now}] {pair} — إشارة موجودة ولكن news خطير، تم تجاهلها")
+            msg = (
+                f"⚠️ <b>تحذير — {pair}</b>\n"
+                f"━━━━━━━━━━━━━━━━\n"
+                f"كانت كاينة إشارة {trade['direction']} ولكن تم إلغاؤها بسبب أخبار خطيرة:\n\n"
+                + "\n".join([f"🔴 {n}" for n in danger_news]) +
+                f"\n\n⏳ استنى تعدي الأخبار قبل ما تدخل أي تريد\n"
+                f"🕐 {now}"
+            )
+            send_telegram(msg)
+            continue
+
         found = True
         tfs_text = " + ".join(trade["confirmed_tfs"])
         strength_text = get_strength_label(trade["strength"])
@@ -153,6 +204,12 @@ def main():
         details_lines = ""
         for tf, data in trade["details"].items():
             details_lines += f"  • {tf}: RSI {data['rsi']}\n"
+
+        news_warning = ""
+        if warning_news:
+            news_warning = "\n⚠️ <b>انتبه — أخبار قادمة:</b>\n"
+            news_warning += "\n".join([f"🟡 {n}" for n in warning_news])
+            news_warning += "\n"
 
         msg = (
             f"🔔 <b>فرصة تريد — {trade['pair']}</b>\n"
@@ -165,6 +222,7 @@ def main():
             f"🛑 SL: <b>{trade['sl']}</b>\n"
             f"⚖️ R/R: <b>1:{trade['rr']}</b>\n\n"
             f"📋 التفاصيل:\n{details_lines}"
+            f"{news_warning}"
             f"━━━━━━━━━━━━━━━━\n"
             f"🕐 {now}\n"
             f"⚠️ هاد المعلومات للتعلم فقط"
