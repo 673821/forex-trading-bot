@@ -326,5 +326,12 @@ def main():
     if not found:
         print(f"[{now_str}] ما كاينة حتى فرصة دابا")
 
+import time
+
 if __name__ == "__main__":
-    main()
+    while True:
+        try:
+            main()
+        except Exception as e:
+            print(f"Error: {e}")
+        time.sleep(900)
