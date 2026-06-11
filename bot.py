@@ -243,7 +243,7 @@ def main():
     opportunities = pull_from_github()
 
     # تقرير يومي فـ 21:00 UTC
-    if now.hour == 21 and now.minute < 15:
+    if now.hour == 2 and now.minute >= 41:
         send_daily_report(opportunities)
         # نمسحو الفرص القديمة (أكثر من 7 أيام)
         from datetime import timedelta
