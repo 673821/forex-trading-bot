@@ -85,6 +85,81 @@ def get_high_impact_news(pair):
     except:
         return [], []
 
+def get_market_summary(pair):
+    """كيجيب ملخص تحركات السوق ديال اليوم"""
+    try:
+        result_1h = get_price_data(pair, "1h", 24)
+        result_15 = get_price_data(pair, "15min", 8)
+        if not result_1h or not result_15:
+            return None
+
+        closes_1h = result_1h[0]
+        closes_15 = result_15[0]
+
+        # تحرك اليوم
+        open_price = closes_1h[0]
+        current = closes_1h[-1]
+        change = round(current - open_price, 6)
+        change_pct = round((change / open_price) * 100, 3)
+        direction_emoji = "📈" if change > 0 else "📉"
+
+        # أعلى وأدنى اليوم
+        highs_1h = result_1h[1]
+        lows_1h = result_1h[2]
+        high_day = round(max(highs_1h), 6)
+        low_day = round(min(lows_1h), 6)
+
+        # تحرك آخر ساعة
+        last_hour_change = round(closes_15[-1] - closes_15[0], 6)
+        last_hour_emoji = "⬆️" if last_hour_change > 0 else "⬇️"
+
+        return {
+            "change": change,
+            "change_pct": change_pct,
+            "direction_emoji": direction_emoji,
+            "high_day": high_day,
+            "low_day": low_day,
+            "last_hour_change": last_hour_change,
+            "last_hour_emoji": last_hour_emoji,
+            "current": current
+        }
+    except:
+        return None
+
+def get_news_summary(pair):
+    """كيجيب ملخص الأخبار ديال اليوم"""
+    try:
+        currencies = PAIR_CURRENCIES.get(pair, [])
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+        r = requests.get(url, timeout=10)
+        events = r.json()
+        now = datetime.now(timezone.utc)
+        today = now.strftime("%Y-%m-%d")
+        today_news = []
+        for event in events:
+            if event.get("impact") not in ["High", "Medium"]:
+                continue
+            if event.get("currency") not in currencies:
+                continue
+            try:
+                event_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
+            except:
+                continue
+            if event_time.strftime("%Y-%m-%d") == today:
+                impact_emoji = "🔴" if event.get("impact") == "High" else "🟡"
+                diff = (event_time - now).total_seconds() / 60
+                if diff < -60:
+                    status = "مرات"
+                elif diff < 0:
+                    status = "داز دابا"
+                else:
+                    status = f"بعد {int(diff)} دقيقة"
+                today_news.append(f"{impact_emoji} {event['title']} ({status})")
+        return today_news
+    except:
+        return []
+
+
 def get_price_data(pair, interval="15min", outputsize=50):
     params = {
         "symbol": pair,
@@ -150,9 +225,9 @@ def analyze_timeframe(pair, interval):
     atr = calc_atr(highs, lows, closes)
     if rsi is None or macd is None or atr is None:
         return None
-    if rsi < 35 and macd > signal:
+    if rsi < 40 and macd > signal:
         return {"direction": "BUY", "rsi": rsi, "atr": atr, "price": closes[-1]}
-    elif rsi > 65 and macd < signal:
+    elif rsi > 60 and macd < signal:
         return {"direction": "SELL", "rsi": rsi, "atr": atr, "price": closes[-1]}
     return None
 
@@ -404,17 +479,35 @@ def main_loop():
                     if warning_news:
                         news_warning = "\n⚠️ <b>أخبار قادمة:</b>\n" + "\n".join([f"🟡 {n}" for n in warning_news]) + "\n"
 
+                    market = get_market_summary(trade['pair'])
+                    today_news = get_news_summary(trade['pair'])
+
+                    market_section = ""
+                    if market:
+                        market_section = (
+                            f"\n📊 <b>السوق اليوم:</b>\n"
+                            f"  {market['direction_emoji']} التغيير: {market['change']:+.6f} ({market['change_pct']:+.3f}%)\n"
+                            f"  🔝 أعلى: {market['high_day']} | 🔻 أدنى: {market['low_day']}\n"
+                            f"  {market['last_hour_emoji']} آخر ساعة: {market['last_hour_change']:+.6f}\n"
+                        )
+
+                    news_section = ""
+                    if today_news:
+                        news_section = f"\n📰 <b>أخبار اليوم:</b>\n" + "\n".join([f"  {n}" for n in today_news]) + "\n"
+
                     msg = (
                         f"🔔 <b>فرصة تريد — {trade['pair']}</b>\n"
                         f"━━━━━━━━━━━━━━━━\n"
                         f"📊 الإشارة: <b>{trade['direction']}</b>\n"
                         f"💪 القوة: <b>{strength_text}</b>\n"
-                        f"⏱ مؤكدة على: <b>{tfs_text}</b>\n\n"
-                        f"💰 السعر الحالي: <b>{trade['price']}</b>\n"
+                        f"⏱ مؤكدة على: <b>{tfs_text}</b>\n"
+                        f"{market_section}"
+                        f"{news_section}"
+                        f"\n💰 السعر الحالي: <b>{trade['price']}</b>\n"
                         f"🎯 TP: <b>{trade['tp']}</b>\n"
                         f"🛑 SL: <b>{trade['sl']}</b>\n"
                         f"⚖️ R/R: <b>1:{trade['rr']}</b>\n\n"
-                        f"📋 التفاصيل:\n{details_lines}"
+                        f"📋 RSI Details:\n{details_lines}"
                         f"{news_warning}"
                         f"━━━━━━━━━━━━━━━━\n"
                         f"🕐 {now_str}\n\n"
