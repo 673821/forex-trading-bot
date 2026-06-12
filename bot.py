@@ -399,12 +399,55 @@ def run_server():
     print(f"Server running on port {PORT}")
     server.serve_forever()
 
+
+def send_hourly_report(pairs_status):
+    """كيبعت تقرير كل ساعة عن حالة السوق"""
+    now_str = datetime.utcnow().strftime("%H:%M UTC")
+    msg = f"🕐 <b>تقرير السوق — {now_str}</b>\n━━━━━━━━━━━━━━━━\n"
+
+    for pair, status in pairs_status.items():
+        market = status.get("market")
+        rsi_15 = status.get("rsi_15")
+        reason = status.get("reason")
+
+        if market:
+            msg += (
+                f"\n💱 <b>{pair}</b>\n"
+                f"  {market['direction_emoji']} اليوم: {market['change_pct']:+.3f}% | "
+                f"{market['last_hour_emoji']} آخر ساعة: {market['last_hour_change']:+.6f}\n"
+            )
+        else:
+            msg += f"\n💱 <b>{pair}</b>\n"
+
+        if rsi_15:
+            msg += f"  📊 RSI(15min): {rsi_15}\n"
+
+        if reason:
+            msg += f"  🔍 {reason}\n"
+
+    # أخبار اليوم
+    all_news = []
+    for pair in pairs_status:
+        news = get_news_summary(pair)
+        for n in news:
+            if n not in all_news:
+                all_news.append(n)
+
+    if all_news:
+        msg += f"\n📰 <b>أخبار اليوم:</b>\n"
+        msg += "\n".join([f"  {n}" for n in all_news[:5]])
+        msg += "\n"
+
+    msg += f"\n━━━━━━━━━━━━━━━━\n⏳ باقي مراقب السوق..."
+    send_telegram(msg)
+
 def main_loop():
     global pending_trade, waiting_confirmation
     time.sleep(5)
     set_webhook()
 
     opportunities = pull_from_github()
+    last_report_hour = -1
 
     while True:
         now = datetime.utcnow()
@@ -437,6 +480,27 @@ def main_loop():
 
                 time.sleep(900)
                 continue
+
+            # تقرير كل ساعة
+            if now.hour != last_report_hour and now.minute < 15 and not waiting_confirmation:
+                last_report_hour = now.hour
+                pairs_status = {}
+                for pair in PAIRS:
+                    market = get_market_summary(pair)
+                    rsi_data = None
+                    reason = None
+                    result = get_price_data(pair, "15min")
+                    if result:
+                        rsi_data = calc_rsi(result[0])
+                        if rsi_data:
+                            if 40 <= rsi_data <= 60:
+                                reason = f"RSI = {rsi_data} — السوق محايد، مراقب..."
+                            elif rsi_data < 40:
+                                reason = f"RSI = {rsi_data} — قريب من منطقة BUY، مراقب MACD..."
+                            else:
+                                reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
+                    pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
+                send_hourly_report(pairs_status)
 
             if not waiting_confirmation:
                 for pair in PAIRS:
