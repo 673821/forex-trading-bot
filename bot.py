@@ -53,7 +53,11 @@ def answer_callback(callback_query_id):
     requests.post(url, json={"callback_query_id": callback_query_id})
 
 def set_webhook():
-    webhook_url = f"https://forex-trading-bot-production-4f87.up.railway.app/webhook"
+    # امسح الـ webhook القديم أولاً
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook")
+    time.sleep(2)
+    # سجل الجديد
+    webhook_url = "https://forex-trading-bot-production-4f87.up.railway.app/webhook"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
     r = requests.post(url, json={"url": webhook_url})
     print(f"Webhook set: {r.json()}")
