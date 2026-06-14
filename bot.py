@@ -461,6 +461,7 @@ def main_loop():
 
     opportunities = pull_from_github()
     last_report_hour = -1
+    already_warned = {}  # كيتذكر واش بعت تحذير لكل زوج
 
     while True:
         now = datetime.utcnow()
@@ -524,14 +525,20 @@ def main_loop():
                         if rsi_current:
                             direction, rsi_val = check_pre_signal(pair, rsi_current)
                             if direction:
-                                direction_emoji = "📉 SELL" if direction == "SELL" else "📈 BUY"
-                                send_telegram(
-                                    f"⚠️ <b>تحذير مسبق — {pair}</b>\n"
-                                    f"━━━━━━━━━━━━━━━━\n"
-                                    f"RSI = <b>{rsi_val}</b> — كيقترب من منطقة {direction_emoji}\n"
-                                    f"⏳ كون مستعد — ممكن تجي إشارة فـ 15 دقيقة\n"
-                                    f"🕐 {now_str}"
-                                )
+                                # ما يعاودش يبعت تحذير إلا إذا تغير الاتجاه
+                                if already_warned.get(pair) != direction:
+                                    already_warned[pair] = direction
+                                    direction_emoji = "📉 SELL" if direction == "SELL" else "📈 BUY"
+                                    send_telegram(
+                                        f"⚠️ <b>تحذير مسبق — {pair}</b>\n"
+                                        f"━━━━━━━━━━━━━━━━\n"
+                                        f"RSI = <b>{rsi_val}</b> — كيقترب من منطقة {direction_emoji}\n"
+                                        f"⏳ كون مستعد — ممكن تجي إشارة فـ 15 دقيقة\n"
+                                        f"🕐 {now_str}"
+                                    )
+                            else:
+                                # RSI رجع للمنطقة المحايدة — نريسيتو
+                                already_warned.pop(pair, None)
 
             if not waiting_confirmation:
                 for pair in PAIRS:
