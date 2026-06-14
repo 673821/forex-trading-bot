@@ -280,6 +280,15 @@ def get_strength_label(strength):
         return "⭐⭐ متوسطة"
     return "⭐ ضعيفة"
 
+
+def check_pre_signal(pair, rsi):
+    """كيشوف واش RSI كيقترب من منطقة الإشارة"""
+    if 55 <= rsi <= 59:
+        return "SELL", rsi
+    elif 41 <= rsi >= 40 and rsi <= 45:
+        return "BUY", rsi
+    return None, None
+
 def pull_from_github():
     if not GH_TOKEN or not GITHUB_REPO:
         return []
@@ -505,6 +514,24 @@ def main_loop():
                                 reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
                     pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
                 send_hourly_report(pairs_status)
+
+            # تحذير مسبق 15 دقيقة قبل الإشارة
+            if not waiting_confirmation:
+                for pair in PAIRS:
+                    result = get_price_data(pair, "15min")
+                    if result:
+                        rsi_current = calc_rsi(result[0])
+                        if rsi_current:
+                            direction, rsi_val = check_pre_signal(pair, rsi_current)
+                            if direction:
+                                direction_emoji = "📉 SELL" if direction == "SELL" else "📈 BUY"
+                                send_telegram(
+                                    f"⚠️ <b>تحذير مسبق — {pair}</b>\n"
+                                    f"━━━━━━━━━━━━━━━━\n"
+                                    f"RSI = <b>{rsi_val}</b> — كيقترب من منطقة {direction_emoji}\n"
+                                    f"⏳ كون مستعد — ممكن تجي إشارة فـ 15 دقيقة\n"
+                                    f"🕐 {now_str}"
+                                )
 
             if not waiting_confirmation:
                 for pair in PAIRS:
