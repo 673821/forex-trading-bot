@@ -524,6 +524,9 @@ def main_loop():
                 time.sleep(900)
                 continue
 
+            # جيب كل البيانات مرة واحدة — خاص يكون قبل أي شي
+            fetch_all_data()
+
             # تقرير كل ساعة
             if now.hour != last_report_hour and now.minute < 15 and not waiting_confirmation:
                 last_report_hour = now.hour
@@ -532,7 +535,7 @@ def main_loop():
                     market = get_market_summary(pair)
                     rsi_data = None
                     reason = None
-                    result = get_price_data(pair, "15min")
+                    result = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
                     if result:
                         rsi_data = calc_rsi(result[0])
                         if rsi_data:
@@ -545,13 +548,10 @@ def main_loop():
                     pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
                 send_hourly_report(pairs_status)
 
-            # جيب كل البيانات مرة واحدة
-            fetch_all_data()
-
             # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
                 for pair in PAIRS:
-                    result = get_price_data(pair, "15min")
+                    result = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
                     if result:
                         rsi_current = calc_rsi(result[0])
                         if rsi_current:
