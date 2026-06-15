@@ -165,8 +165,10 @@ def get_news_summary(pair):
 
 
 def get_price_data(pair, interval="15min", outputsize=50):
+    # Twelve Data كيستخدم USDJPY بلا slash
+    symbol = pair.replace("/", "")
     params = {
-        "symbol": pair,
+        "symbol": symbol,
         "interval": interval,
         "outputsize": outputsize,
         "apikey": TWELVE_DATA_API_KEY
@@ -317,7 +319,7 @@ def push_to_github(opportunities):
 
 def monitor_trade(trade):
     global waiting_confirmation, pending_trade
-    now_str = datetime.utcnow().strftime("%H:%M UTC")
+    now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
 
     for i in range(3):
         time.sleep(600)  # كل 10 دقائق
@@ -342,7 +344,7 @@ def monitor_trade(trade):
             f"{progress}\n"
             f"💰 السعر دابا: <b>{current_price}</b>\n"
             f"⏳ باقي: <b>{remaining} دقيقة</b>\n"
-            f"🕐 {datetime.utcnow().strftime('%H:%M UTC')}"
+            f"🕐 {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
         )
 
     if waiting_confirmation:
@@ -357,7 +359,7 @@ def monitor_trade(trade):
             f"🛑 SL: <b>{trade['sl']}</b>\n"
             f"⚖️ R/R: <b>1:{trade['rr']}</b>\n\n"
             f"واش واجد تدخل؟ 🚀\n"
-            f"🕐 {datetime.utcnow().strftime('%H:%M UTC')}"
+            f"🕐 {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
         )
     waiting_confirmation = False
     pending_trade = {}
@@ -390,7 +392,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                         f"✅ <b>واخا! غادي نراقب التريد 30 دقيقة</b>\n"
                         f"━━━━━━━━━━━━━━━━\n"
                         f"غادي نبعت ليك تحديث كل 10 دقائق 👀\n"
-                        f"🕐 {datetime.utcnow().strftime('%H:%M UTC')}"
+                        f"🕐 {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
                     )
                     t = threading.Thread(target=monitor_trade, args=(trade,))
                     t.daemon = True
@@ -415,7 +417,7 @@ def run_server():
 
 def send_hourly_report(pairs_status):
     """كيبعت تقرير كل ساعة عن حالة السوق"""
-    now_str = datetime.utcnow().strftime("%H:%M UTC")
+    now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
     msg = f"🕐 <b>تقرير السوق — {now_str}</b>\n━━━━━━━━━━━━━━━━\n"
 
     for pair, status in pairs_status.items():
@@ -464,7 +466,7 @@ def main_loop():
     already_warned = {}  # كيتذكر واش بعت تحذير لكل زوج
 
     while True:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         now_str = now.strftime("%H:%M UTC")
 
         try:
