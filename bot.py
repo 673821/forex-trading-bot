@@ -283,12 +283,21 @@ def get_strength_label(strength):
     return "⭐ ضعيفة"
 
 
-def check_pre_signal(pair, rsi):
-    """كيشوف واش RSI كيقترب من منطقة الإشارة"""
-    if 55 <= rsi <= 59:
-        return "SELL", rsi
-    elif 41 <= rsi >= 40 and rsi <= 45:
-        return "BUY", rsi
+def check_pre_signal(pair, rsi_15):
+    """كيشوف واش RSI ديال 15min + 1h كيقتربو من منطقة الإشارة"""
+    # جيب RSI ديال 1h
+    result_1h = get_price_data(pair, "1h")
+    if not result_1h:
+        return None, None
+    rsi_1h = calc_rsi(result_1h[0])
+    if not rsi_1h:
+        return None, None
+
+    # الاثنين خاصهم يكونو متفقين
+    if 55 <= rsi_15 <= 59 and 55 <= rsi_1h <= 65:
+        return "SELL", rsi_15
+    elif 40 <= rsi_15 <= 45 and 35 <= rsi_1h <= 45:
+        return "BUY", rsi_15
     return None, None
 
 def pull_from_github():
