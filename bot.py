@@ -33,42 +33,14 @@ waiting_confirmation = False
 data_cache = {}
 
 def fetch_all_data():
-    """كيجيب بيانات كل الأزواج بـ batch request واحد لكل timeframe"""
+    """كيجيب بيانات كل الأزواج مرة واحدة ويحفظها فالـ cache"""
     global data_cache
     data_cache = {}
     for pair in PAIRS:
         data_cache[pair] = {}
-
-    for tf in ["15min", "1h", "4h"]:
-        # طلب واحد فيه كل الأزواج — بدل 3 طلبات منفصلة
-        symbols = ",".join([p.replace("/", "") for p in PAIRS])
-        params = {
-            "symbol": symbols,
-            "interval": tf,
-            "outputsize": 50,
-            "apikey": TWELVE_DATA_API_KEY
-        }
-        try:
-            r = requests.get("https://api.twelvedata.com/time_series", params=params)
-            data = r.json()
-        except:
-            data = {}
-
-        for pair in PAIRS:
-            symbol = pair.replace("/", "")
-            # batch response كيرجع dict فيه كل زوج
-            pair_data = data.get(symbol, {})
-            if "values" not in pair_data:
-                print(f"[CACHE] {pair} {tf} => FAILED")
-                data_cache[pair][tf] = None
-                continue
-            closes = [float(v["close"]) for v in reversed(pair_data["values"])]
-            highs  = [float(v["high"])  for v in reversed(pair_data["values"])]
-            lows   = [float(v["low"])   for v in reversed(pair_data["values"])]
-            data_cache[pair][tf] = (closes, highs, lows)
-            print(f"[CACHE] {pair} {tf} => OK")
-
-        time.sleep(2)  # ثانيتين بين كل timeframe فقط
+        for tf in ["15min", "1h", "4h"]:
+            result = get_price_data(pair, tf)
+            data_cache[pair][tf] = result
 
 def get_cached_data(pair, interval):
     """كيرجع البيانات من الـ cache"""
@@ -552,9 +524,6 @@ def main_loop():
                 time.sleep(900)
                 continue
 
-            # جيب كل البيانات مرة واحدة — خاص يكون قبل أي شي
-            fetch_all_data()
-
             # تقرير كل ساعة
             if now.hour != last_report_hour and now.minute < 15 and not waiting_confirmation:
                 last_report_hour = now.hour
@@ -563,7 +532,7 @@ def main_loop():
                     market = get_market_summary(pair)
                     rsi_data = None
                     reason = None
-                    result = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
+                    result = get_price_data(pair, "15min")
                     if result:
                         rsi_data = calc_rsi(result[0])
                         if rsi_data:
@@ -576,10 +545,13 @@ def main_loop():
                     pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
                 send_hourly_report(pairs_status)
 
+            # جيب كل البيانات مرة واحدة
+            fetch_all_data()
+
             # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
                 for pair in PAIRS:
-                    result = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
+                    result = get_price_data(pair, "15min")
                     if result:
                         rsi_current = calc_rsi(result[0])
                         if rsi_current:
