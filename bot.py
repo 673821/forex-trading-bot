@@ -33,14 +33,42 @@ waiting_confirmation = False
 data_cache = {}
 
 def fetch_all_data():
-    """كيجيب بيانات كل الأزواج مرة واحدة ويحفظها فالـ cache"""
+    """كيجيب بيانات كل الأزواج بـ batch request واحد لكل timeframe"""
     global data_cache
     data_cache = {}
     for pair in PAIRS:
         data_cache[pair] = {}
-        for tf in ["15min", "1h", "4h"]:
-            result = get_price_data(pair, tf)
-            data_cache[pair][tf] = result
+
+    for tf in ["15min", "1h", "4h"]:
+        # طلب واحد فيه كل الأزواج — بدل 3 طلبات منفصلة
+        symbols = ",".join([p.replace("/", "") for p in PAIRS])
+        params = {
+            "symbol": symbols,
+            "interval": tf,
+            "outputsize": 50,
+            "apikey": TWELVE_DATA_API_KEY
+        }
+        try:
+            r = requests.get("https://api.twelvedata.com/time_series", params=params)
+            data = r.json()
+        except:
+            data = {}
+
+        for pair in PAIRS:
+            symbol = pair.replace("/", "")
+            # batch response كيرجع dict فيه كل زوج
+            pair_data = data.get(symbol, {})
+            if "values" not in pair_data:
+                print(f"[CACHE] {pair} {tf} => FAILED")
+                data_cache[pair][tf] = None
+                continue
+            closes = [float(v["close"]) for v in reversed(pair_data["values"])]
+            highs  = [float(v["high"])  for v in reversed(pair_data["values"])]
+            lows   = [float(v["low"])   for v in reversed(pair_data["values"])]
+            data_cache[pair][tf] = (closes, highs, lows)
+            print(f"[CACHE] {pair} {tf} => OK")
+
+        time.sleep(2)  # ثانيتين بين كل timeframe فقط
 
 def get_cached_data(pair, interval):
     """كيرجع البيانات من الـ cache"""
