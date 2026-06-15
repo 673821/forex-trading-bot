@@ -524,10 +524,12 @@ def main_loop():
                 time.sleep(900)
                 continue
 
+            # جيب كل البيانات مرة واحدة فبداية كل run
+            fetch_all_data()
+
             # تقرير كل ساعة
             if now.hour != last_report_hour and now.minute < 15 and not waiting_confirmation:
                 last_report_hour = now.hour
-                fetch_all_data()
                 pairs_status = {}
                 for pair in PAIRS:
                     market = get_market_summary(pair)
