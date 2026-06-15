@@ -28,6 +28,24 @@ PAIR_CURRENCIES = {
 pending_trade = {}
 waiting_confirmation = False
 
+
+# Cache ديال البيانات باش ما نطلبوش أكثر من مرة
+data_cache = {}
+
+def fetch_all_data():
+    """كيجيب بيانات كل الأزواج مرة واحدة ويحفظها فالـ cache"""
+    global data_cache
+    data_cache = {}
+    for pair in PAIRS:
+        data_cache[pair] = {}
+        for tf in ["15min", "1h", "4h"]:
+            result = get_price_data(pair, tf)
+            data_cache[pair][tf] = result
+
+def get_cached_data(pair, interval):
+    """كيرجع البيانات من الـ cache"""
+    return data_cache.get(pair, {}).get(interval, None)
+
 def send_telegram(msg, reply_markup=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -92,8 +110,8 @@ def get_high_impact_news(pair):
 def get_market_summary(pair):
     """كيجيب ملخص تحركات السوق ديال اليوم"""
     try:
-        result_1h = get_price_data(pair, "1h", 24)
-        result_15 = get_price_data(pair, "15min", 8)
+        result_1h = get_cached_data(pair, "1h") or get_price_data(pair, "1h", 24)
+        result_15 = get_cached_data(pair, "15min") or get_price_data(pair, "15min", 8)
         if not result_1h or not result_15:
             return None
 
@@ -222,7 +240,7 @@ def calc_atr(highs, lows, closes, period=14):
     return round(sum(trs[-period:]) / period, 6)
 
 def analyze_timeframe(pair, interval):
-    result = get_price_data(pair, interval)
+    result = get_cached_data(pair, interval) or get_price_data(pair, interval)
     if not result:
         return None
     closes, highs, lows = result
@@ -285,8 +303,8 @@ def get_strength_label(strength):
 
 def check_pre_signal(pair, rsi_15):
     """كيشوف واش RSI ديال 15min + 1h كيقتربو من منطقة الإشارة"""
-    # جيب RSI ديال 1h
-    result_1h = get_price_data(pair, "1h")
+    # جيب RSI ديال 1h من الـ cache
+    result_1h = get_cached_data(pair, "1h") or get_price_data(pair, "1h")
     if not result_1h:
         return None, None
     rsi_1h = calc_rsi(result_1h[0])
@@ -526,6 +544,9 @@ def main_loop():
                                 reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
                     pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
                 send_hourly_report(pairs_status)
+
+            # جيب كل البيانات مرة واحدة
+            fetch_all_data()
 
             # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
