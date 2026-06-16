@@ -14,14 +14,14 @@ GH_TOKEN = os.environ.get("GH_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 PORT = int(os.environ.get("PORT", 8080))
 
-PAIRS = ["EUR/USD", "GBP/USD", "AUD/USD"]
+PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY"]
 TIMEFRAMES = ["15min", "1h", "4h"]
 OPPORTUNITIES_FILE = "opportunities.json"
 
 PAIR_CURRENCIES = {
     "EUR/USD": ["EUR", "USD"],
     "GBP/USD": ["GBP", "USD"],
-    "AUD/USD": ["AUD", "USD"]
+    "USD/JPY": ["USD", "JPY"]
 }
 
 # حالة التريد المنتظر للتأكيد
@@ -33,14 +33,42 @@ waiting_confirmation = False
 data_cache = {}
 
 def fetch_all_data():
-    """كيجيب بيانات كل الأزواج مرة واحدة ويحفظها فالـ cache"""
+    """كيجيب بيانات كل الأزواج بـ batch request — طلب واحد لكل timeframe"""
     global data_cache
-    data_cache = {}
-    for pair in PAIRS:
-        data_cache[pair] = {}
-        for tf in ["15min", "1h", "4h"]:
-            result = get_price_data(pair, tf)
-            data_cache[pair][tf] = result
+    data_cache = {pair: {} for pair in PAIRS}
+    symbols = ",".join([p.replace("/", "") for p in PAIRS])
+
+    for tf in ["15min", "1h", "4h"]:
+        try:
+            params = {
+                "symbol": symbols,
+                "interval": tf,
+                "outputsize": 50,
+                "apikey": TWELVE_DATA_API_KEY
+            }
+            r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=15)
+            data = r.json()
+        except Exception as e:
+            print(f"[CACHE ERROR] {tf}: {e}")
+            for pair in PAIRS:
+                data_cache[pair][tf] = None
+            continue
+
+        for pair in PAIRS:
+            symbol = pair.replace("/", "")
+            pair_data = data.get(symbol, {})
+            if "values" not in pair_data:
+                print(f"[CACHE] {pair} {tf} => FAILED | {pair_data.get('message', 'no values')}")
+                data_cache[pair][tf] = None
+            else:
+                closes = [float(v["close"]) for v in reversed(pair_data["values"])]
+                highs  = [float(v["high"])  for v in reversed(pair_data["values"])]
+                lows   = [float(v["low"])   for v in reversed(pair_data["values"])]
+                data_cache[pair][tf] = (closes, highs, lows)
+                print(f"[CACHE] {pair} {tf} => OK")
+
+        time.sleep(2)
+
 
 def get_cached_data(pair, interval):
     """كيرجع البيانات من الـ cache"""
@@ -524,7 +552,7 @@ def main_loop():
                 time.sleep(900)
                 continue
 
-            # جيب كل البيانات مرة واحدة فبداية كل run
+            # جيب كل البيانات مرة واحدة — خاص يكون قبل أي شي
             fetch_all_data()
 
             # تقرير كل ساعة
@@ -535,7 +563,7 @@ def main_loop():
                     market = get_market_summary(pair)
                     rsi_data = None
                     reason = None
-                    result = get_cached_data(pair, "15min")
+                    result = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
                     if result:
                         rsi_data = calc_rsi(result[0])
                         if rsi_data:
@@ -551,7 +579,7 @@ def main_loop():
             # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
                 for pair in PAIRS:
-                    result = get_cached_data(pair, "15min")
+                    result = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
                     if result:
                         rsi_current = calc_rsi(result[0])
                         if rsi_current:
