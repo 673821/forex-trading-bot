@@ -187,7 +187,7 @@ CACHE_SECONDS = {
     "4h": 14400
 }
 
-def get_price_data(pair, interval="15min", outputsize=50):
+def get_price_data(pair, interval="15min", outputsize=250):
     global price_cache
 
     cache_key = f"{pair}_{interval}"
@@ -277,23 +277,108 @@ def calc_atr(highs, lows, closes, period=14):
     if len(trs) < period:
         return None
     return round(sum(trs[-period:]) / period, 6)
+def calc_ema(prices, period=200):
+    if len(prices) < period:
+        return None
 
+    ema = sum(prices[:period]) / period
+    multiplier = 2 / (period + 1)
+
+    for price in prices[period:]:
+        ema = (price - ema) * multiplier + ema
+
+    return ema
+
+
+def get_trend_structure(closes):
+    if len(closes) < 20:
+        return None
+
+    recent = closes[-10:]
+    older = closes[-20:-10]
+
+    if max(recent) > max(older) and min(recent) > min(older):
+        return "UP"
+
+    if max(recent) < max(older) and min(recent) < min(older):
+        return "DOWN"
+
+    return "SIDEWAYS"
+
+
+def get_support_resistance(highs, lows):
+    support = min(lows[-20:])
+    resistance = max(highs[-20:])
+    return support, resistance
+    
 def analyze_timeframe(pair, interval):
     result = get_cached_data(pair, interval) or get_price_data(pair, interval)
+
     if not result:
         return None
+
     closes, highs, lows = result
+
     rsi = calc_rsi(closes)
     macd, signal = calc_macd(closes)
     atr = calc_atr(highs, lows, closes)
+
     if rsi is None or macd is None or atr is None:
         return None
-    if rsi < 40 and macd > signal:
-        return {"direction": "BUY", "rsi": rsi, "atr": atr, "price": closes[-1]}
-    elif rsi > 60 and macd < signal:
-        return {"direction": "SELL", "rsi": rsi, "atr": atr, "price": closes[-1]}
-    return None
 
+    current_price = closes[-1]
+
+    # EMA200
+    ema200 = calc_ema(closes, 200)
+
+    if ema200 is None:
+        return None
+
+    # Trend Structure
+    trend = get_trend_structure(closes)
+
+    # Support / Resistance
+    support, resistance = get_support_resistance(highs, lows)
+
+    resistance_distance = abs(resistance - current_price)
+    support_distance = abs(current_price - support)
+
+    # BUY
+    if (
+        rsi < 40
+        and macd > signal
+        and current_price > ema200
+        and trend == "UP"
+        and resistance_distance > atr * 0.5
+    ):
+        return {
+            "direction": "BUY",
+            "rsi": rsi,
+            "atr": atr,
+            "price": current_price,
+            "ema200": ema200,
+            "trend": trend
+        }
+
+    # SELL
+    elif (
+        rsi > 60
+        and macd < signal
+        and current_price < ema200
+        and trend == "DOWN"
+        and support_distance > atr * 0.5
+    ):
+        return {
+            "direction": "SELL",
+            "rsi": rsi,
+            "atr": atr,
+            "price": current_price,
+            "ema200": ema200,
+            "trend": trend
+        }
+
+    return None
+    
 def analyze_pair(pair):
     results = {}
     for tf in TIMEFRAMES:
