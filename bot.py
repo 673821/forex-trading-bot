@@ -179,26 +179,65 @@ def get_news_summary(pair):
         return today_news
     except:
         return []
+price_cache = {}
 
+CACHE_SECONDS = {
+    "15min": 900,
+    "1h": 3600,
+    "4h": 14400
+}
 
 def get_price_data(pair, interval="15min", outputsize=50):
-    # Twelve Data كيستخدم USDJPY بلا slash
-    symbol = pair.replace("/", "")
+    global price_cache
+
+    cache_key = f"{pair}_{interval}"
+    now_ts = time.time()
+
+    if cache_key in price_cache:
+        cached_time = price_cache[cache_key]["time"]
+
+        if now_ts - cached_time < CACHE_SECONDS.get(interval, 900):
+            return price_cache[cache_key]["data"]
+
     params = {
-        "symbol": symbol,
+        "symbol": pair,
         "interval": interval,
         "outputsize": outputsize,
         "apikey": TWELVE_DATA_API_KEY
     }
-    r = requests.get("https://api.twelvedata.com/time_series", params=params)
-    data = r.json()
-    if "values" not in data:
-        print(f"API Error for {symbol} {interval}: {data}")
+
+    try:
+        r = requests.get(
+            "https://api.twelvedata.com/time_series",
+            params=params,
+            timeout=15
+        )
+
+        data = r.json()
+
+        if "values" not in data:
+            print(
+                f"API Error {pair} {interval}: "
+                f"{data.get('message', data.get('code', 'unknown'))}"
+            )
+            return None
+
+        closes = [float(v["close"]) for v in reversed(data["values"])]
+        highs = [float(v["high"]) for v in reversed(data["values"])]
+        lows = [float(v["low"]) for v in reversed(data["values"])]
+
+        result = (closes, highs, lows)
+
+        price_cache[cache_key] = {
+            "time": now_ts,
+            "data": result
+        }
+
+        return result
+
+    except Exception as e:
+        print(f"Price API Error {pair} {interval}: {e}")
         return None
-    closes = [float(v["close"]) for v in reversed(data["values"])]
-    highs  = [float(v["high"])  for v in reversed(data["values"])]
-    lows   = [float(v["low"])   for v in reversed(data["values"])]
-    return closes, highs, lows
 
 def calc_rsi(closes, period=14):
     gains, losses = [], []
