@@ -14,13 +14,14 @@ GH_TOKEN = os.environ.get("GH_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 PORT = int(os.environ.get("PORT", 8080))
 
-PAIRS = ["EUR/USD", "GBP/USD"]
+PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY"]
 TIMEFRAMES = ["15min", "1h", "4h"]
 OPPORTUNITIES_FILE = "opportunities.json"
 
 PAIR_CURRENCIES = {
     "EUR/USD": ["EUR", "USD"],
     "GBP/USD": ["GBP", "USD"],
+    "USD/JPY": ["USD", "JPY"],
 }
 
 # حالة التريد المنتظر للتأكيد
