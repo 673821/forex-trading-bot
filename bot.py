@@ -4,6 +4,7 @@ import time
 import requests
 import threading
 import base64
+import traceback
 from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -235,8 +236,9 @@ def get_price_data(pair, interval="15min", outputsize=250):
 
         return result
 
-    except Exception as e:
-        print(f"Price API Error {pair} {interval}: {e}")
+    except Exception:
+        print(f"Price API Error {pair} {interval}:")
+        traceback.print_exc()
         return None
 
 def calc_rsi(closes, period=14):
@@ -740,8 +742,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     waiting_confirmation = False
                     send_telegram("❌ واخا، تجاوزنا هاد التريد. غادي نكملو نراقبو السوق 👀")
 
-        except Exception as e:
-            print(f"Webhook error: {e}")
+        except Exception:
+            print("Webhook error:")
+            traceback.print_exc()
 
     def log_message(self, format, *args):
         pass
@@ -802,7 +805,13 @@ def main_loop():
     time.sleep(5)
     set_webhook()
 
-    opportunities = pull_from_github()
+    try:
+        opportunities = pull_from_github()
+    except Exception:
+        print("⚠️ pull_from_github failed at startup:")
+        traceback.print_exc()
+        opportunities = []
+
     last_report_hour = -1
     already_warned = {}  # كيتذكر واش بعت تحذير لكل زوج
 
@@ -966,8 +975,9 @@ def main_loop():
                     send_with_buttons(msg, trade)
                     break
 
-        except Exception as e:
-            print(f"Error: {e}")
+        except Exception:
+            print("Error in main_loop:")
+            traceback.print_exc()
 
         time.sleep(900)
 
