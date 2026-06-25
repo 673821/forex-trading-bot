@@ -497,110 +497,62 @@ def get_debug_report(pair):
             "sell_ready": sell_ready,
         }
 
-    # ---------- بناء النص ----------
-    lines = [f"🔍 <b>DEBUG — {pair}</b>"]
+    # ---------- بناء النص (الفورمات المبسطة النهائية) ----------
+    lines = [f"🔍 {pair}"]
 
-    any_buy_ready = False
-    any_sell_ready = False
-
-    # كيتبع أقرب signal (أعلى score) فكل الـ timeframes والاتجاهات
-    closest_direction = None
-    closest_score = -1
-    closest_tf = None
+    REQUIRED_CONFIRMATIONS = 2  # نفس الشرط ديال analyze_pair (directions.count(...) >= 2)
+    buy_ready_count = 0
+    sell_ready_count = 0
 
     for tf in TIMEFRAMES:
         data = tf_results.get(tf)
-        lines.append(f"\n⏱ <b>{tf}</b>")
+        tf_label = {"15min": "15min", "1h": "1H", "4h": "4H"}.get(tf, tf)
+
+        lines.append(f"\n━━━━━━━━")
+        lines.append(f"{tf_label}")
 
         if not data or "error" in data:
             err = data["error"] if data else "ماكاينش بيانات"
-            lines.append(f"  ⚠️ {err}")
+            lines.append(f"⚠️ {err}")
             continue
 
         required_dist = round(data['atr'] * 0.5, 6)
+        macd_diff = round(data['macd'] - data['signal'], 6)
+        resistance_remaining = round(required_dist - data['resistance_distance'], 6)
+        support_remaining = round(required_dist - data['support_distance'], 6)
 
-        # BUY
-        lines.append(f"  📈 <b>BUY — {data['buy_score']}/5</b>")
-        lines.append(f"    {'✅' if data['buy_checks']['RSI'] else '❌'} RSI {data['rsi']} (< 40)")
-        lines.append(f"    {'✅' if data['buy_checks']['MACD'] else '❌'} MACD {data['macd']} vs Signal {data['signal']}")
-        lines.append(f"    {'✅' if data['buy_checks']['EMA200'] else '❌'} Price {round(data['current_price'],6)} vs EMA200 {round(data['ema200'],6)}")
-        lines.append(f"    {'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']}")
-        lines.append(f"    {'✅' if data['buy_checks']['Resistance'] else '❌'} Resistance Distance = {round(data['resistance_distance'],6)}")
-        lines.append(f"       Required > {required_dist}")
-        lines.append(f"  {'✅ BUY READY' if data['buy_ready'] else '❌ BUY REJECTED'}")
+        # ---------- BUY ----------
+        lines.append("BUY")
+        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required < 40)")
+        lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
+        lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
+        lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = UP)")
+        lines.append(f"{'✅' if data['buy_checks']['Resistance'] else '❌'} Resistance = {round(data['resistance_distance'],6)} / {required_dist} (Remaining: {resistance_remaining})")
+        lines.append(f"Score: {data['buy_score']}/5")
 
-        if not data["buy_ready"]:
-            reasons = [k for k, v in data["buy_checks"].items() if not v]
-            lines.append(f"  ❌ BUY blocked by:")
-            for r in reasons:
-                lines.append(f"    - {r}")
-        else:
-            any_buy_ready = True
+        if data["buy_ready"]:
+            buy_ready_count += 1
 
-        if data["buy_score"] > closest_score:
-            closest_score = data["buy_score"]
-            closest_direction = "BUY"
-            closest_tf = tf
+        # ---------- SELL ----------
+        lines.append("")
+        lines.append("SELL")
+        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required > 60)")
+        lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
+        lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
+        lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = DOWN)")
+        lines.append(f"{'✅' if data['sell_checks']['Support'] else '❌'} Support = {round(data['support_distance'],6)} / {required_dist} (Remaining: {support_remaining})")
+        lines.append(f"Score: {data['sell_score']}/5")
 
-        # SELL
-        lines.append(f"  📉 <b>SELL — {data['sell_score']}/5</b>")
-        lines.append(f"    {'✅' if data['sell_checks']['RSI'] else '❌'} RSI {data['rsi']} (> 60)")
-        lines.append(f"    {'✅' if data['sell_checks']['MACD'] else '❌'} MACD {data['macd']} vs Signal {data['signal']}")
-        lines.append(f"    {'✅' if data['sell_checks']['EMA200'] else '❌'} Price {round(data['current_price'],6)} vs EMA200 {round(data['ema200'],6)}")
-        lines.append(f"    {'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']}")
-        lines.append(f"    {'✅' if data['sell_checks']['Support'] else '❌'} Support Distance = {round(data['support_distance'],6)}")
-        lines.append(f"       Required > {required_dist}")
-        lines.append(f"  {'✅ SELL READY' if data['sell_ready'] else '❌ SELL REJECTED'}")
+        if data["sell_ready"]:
+            sell_ready_count += 1
 
-        if not data["sell_ready"]:
-            reasons = [k for k, v in data["sell_checks"].items() if not v]
-            lines.append(f"  ❌ SELL blocked by:")
-            for r in reasons:
-                lines.append(f"    - {r}")
-        else:
-            any_sell_ready = True
+    # ---------- خلاصة فقط ----------
+    trade_ready = buy_ready_count >= REQUIRED_CONFIRMATIONS or sell_ready_count >= REQUIRED_CONFIRMATIONS
 
-        if data["sell_score"] > closest_score:
-            closest_score = data["sell_score"]
-            closest_direction = "SELL"
-            closest_tf = tf
-
-    # ---------- ملخص الزوج ----------
-    lines.append(f"\n📌 <b>ملخص — {pair}</b>")
-    for tf in TIMEFRAMES:
-        data = tf_results.get(tf)
-        if not data or "error" in data:
-            lines.append(f"  {tf} → ⚠️ بيانات ناقصة")
-            continue
-        lines.append(f"  {tf} → BUY {data['buy_score']}/5 | SELL {data['sell_score']}/5")
-
-    # عدد الـ timeframes اللي وصلو BUY READY (5/5) أو SELL READY (5/5)
-    # هاد العدد هو نفسه اللي كيستعمل analyze_pair() باش يقرر واش يبعت trade
-    REQUIRED_CONFIRMATIONS = 2  # نفس الشرط ديال analyze_pair (directions.count(...) >= 2)
-    buy_ready_count = sum(1 for tf, d in tf_results.items() if d.get("buy_ready"))
-    sell_ready_count = sum(1 for tf, d in tf_results.items() if d.get("sell_ready"))
-
-    lines.append(f"\n🏁 <b>القرار النهائي (نفس logic ديال analyze_pair)</b>")
-    lines.append(f"  BUY Ready Timeframes: {buy_ready_count}/3")
-    lines.append(f"  SELL Ready Timeframes: {sell_ready_count}/3")
-
-    trade_possible = buy_ready_count >= REQUIRED_CONFIRMATIONS or sell_ready_count >= REQUIRED_CONFIRMATIONS
-    lines.append(f"\n  <b>Trade Status:</b>")
-    if trade_possible:
-        lines.append(f"  ✅ Trade can be generated")
-    else:
-        lines.append(f"  ❌ Not enough confirmations")
-
-    lines.append(f"\n  Required confirmations: {REQUIRED_CONFIRMATIONS}")
-    lines.append(f"  Current BUY confirmations: {buy_ready_count}")
-    lines.append(f"  Current SELL confirmations: {sell_ready_count}")
-
-    any_buy_ready = buy_ready_count >= REQUIRED_CONFIRMATIONS
-    any_sell_ready = sell_ready_count >= REQUIRED_CONFIRMATIONS
-
-    # ⭐ Closest Signal — أقرب signal من بين كل الـ timeframes/الاتجاهات
-    if not any_buy_ready and not any_sell_ready and closest_direction:
-        lines.append(f"\n⭐ Closest Signal: {closest_direction} ({closest_score}/5) — {closest_tf}")
+    lines.append(f"\n━━━━━━━━")
+    lines.append(f"BUY Confirmations: {buy_ready_count}/{REQUIRED_CONFIRMATIONS}")
+    lines.append(f"SELL Confirmations: {sell_ready_count}/{REQUIRED_CONFIRMATIONS}")
+    lines.append(f"Trade Status: {'✅ Trade Ready' if trade_ready else '❌ No Trade'}")
 
     return "\n".join(lines)
 
@@ -780,10 +732,6 @@ def send_hourly_report(pairs_status):
         if reason:
             msg += f"  🔍 {reason}\n"
 
-        # 🔍 DEBUG MODE — كيستعمل غير cache، ماكاينش request جديد
-# debug_text = get_debug_report(pair)
-# msg += f"\n{debug_text}\n"
-
     # أخبار اليوم
     all_news = []
     for pair in pairs_status:
@@ -813,6 +761,7 @@ def main_loop():
         opportunities = []
 
     last_report_hour = -1
+    last_daily_report_date = None  # كيتذكر آخر يوم تبعت فيه التقرير اليومي (باش ماغاديش يتأخر أو يتبعت مرتين)
     already_warned = {}  # كيتذكر واش بعت تحذير لكل زوج
 
     while True:
@@ -820,8 +769,10 @@ def main_loop():
         now_str = now.strftime("%H:%M UTC")
 
         try:
-            if now.hour == 21 and now.minute < 15:
-                today = now.strftime("%Y-%m-%d")
+            today = now.strftime("%Y-%m-%d")
+
+            if now.hour >= 21 and last_daily_report_date != today:
+                last_daily_report_date = today
                 today_ops = [o for o in opportunities if o.get("date", "").startswith(today)]
 
                 if not today_ops:
@@ -870,6 +821,12 @@ def main_loop():
                                 reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
                     pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
                 send_hourly_report(pairs_status)
+
+                # 🔍 DEBUG MODE — رسالة مستقلة لكل pair (باش ماتطولش الرسالة وماتقطعهاش Telegram)
+                # كيستعمل غير get_cached_data() (ماكاين حتى request جديد، ماكايأثرش على credits)
+                for pair in PAIRS:
+                    debug_text = get_debug_report(pair)
+                    send_telegram(debug_text)
 
             # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
