@@ -781,8 +781,8 @@ def send_hourly_report(pairs_status):
             msg += f"  🔍 {reason}\n"
 
         # 🔍 DEBUG MODE — كيستعمل غير cache، ماكاينش request جديد
-        debug_text = get_debug_report(pair)
-        msg += f"\n{debug_text}\n"
+# debug_text = get_debug_report(pair)
+# msg += f"\n{debug_text}\n"
 
     # أخبار اليوم
     all_news = []
