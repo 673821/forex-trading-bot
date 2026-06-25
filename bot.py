@@ -55,7 +55,9 @@ def send_telegram(msg, reply_markup=None):
     }
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
-    requests.post(url, json=payload)
+    r = requests.post(url, json=payload)
+    print(r.status_code)
+    print(r.text)
 
 def send_with_buttons(msg, trade):
     keyboard = {
@@ -524,7 +526,7 @@ def get_debug_report(pair):
 
         # ---------- BUY ----------
         lines.append("BUY")
-        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required < 40)")
+        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt; 40)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = UP)")
@@ -537,7 +539,7 @@ def get_debug_report(pair):
         # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
-        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required > 60)")
+        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt; 60)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = DOWN)")
