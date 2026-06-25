@@ -425,6 +425,7 @@ def get_debug_report(pair):
     كيستعمل غير get_cached_data() (ماكاين حتى request جديد، ماكايأثرش على credits).
     كيرجع text مرتب فيه: BUY/SELL score لكل timeframe + reject reasons + القرار النهائي.
     """
+    print(f"Enter get_debug_report({pair})")
     tf_results = {}
 
     for tf in TIMEFRAMES:
@@ -554,6 +555,7 @@ def get_debug_report(pair):
     lines.append(f"SELL Confirmations: {sell_ready_count}/{REQUIRED_CONFIRMATIONS}")
     lines.append(f"Trade Status: {'✅ Trade Ready' if trade_ready else '❌ No Trade'}")
 
+    print(f"Exit get_debug_report({pair})")
     return "\n".join(lines)
 
 
@@ -825,8 +827,12 @@ def main_loop():
                 # 🔍 DEBUG MODE — رسالة مستقلة لكل pair (باش ماتطولش الرسالة وماتقطعهاش Telegram)
                 # كيستعمل غير get_cached_data() (ماكاين حتى request جديد، ماكايأثرش على credits)
                 for pair in PAIRS:
+                    print(f"Starting debug for {pair}")
                     debug_text = get_debug_report(pair)
+                    print(f"Debug created for {pair}")
+                    print(f"Sending debug for {pair}")
                     send_telegram(debug_text)
+                    print(f"Debug sent for {pair}")
 
             # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
