@@ -347,13 +347,12 @@ def analyze_timeframe(pair, interval):
     resistance_distance = abs(resistance - current_price)
     support_distance = abs(current_price - support)
 
-    # BUY
+    # BUY — Core conditions (mandatory): RSI + MACD + EMA200
+    # Trend و Resistance distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     if (
         rsi < 40
         and macd > signal
         and current_price > ema200
-        and trend == "UP"
-        and resistance_distance > atr * 0.5
     ):
         return {
             "direction": "BUY",
@@ -364,13 +363,12 @@ def analyze_timeframe(pair, interval):
             "trend": trend
         }
 
-    # SELL
+    # SELL — Core conditions (mandatory): RSI + MACD + EMA200
+    # Trend و Support distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     elif (
         rsi > 60
         and macd < signal
         and current_price < ema200
-        and trend == "DOWN"
-        and support_distance > atr * 0.5
     ):
         return {
             "direction": "SELL",
