@@ -350,7 +350,7 @@ def analyze_timeframe(pair, interval):
     # BUY — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Resistance distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     if (
-        rsi < 40
+        rsi < 45
         and macd > signal
         and current_price > ema200
     ):
@@ -366,7 +366,7 @@ def analyze_timeframe(pair, interval):
     # SELL — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Support distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     elif (
-        rsi > 60
+        rsi > 55
         and macd < signal
         and current_price < ema200
     ):
@@ -460,7 +460,7 @@ def get_debug_report(pair):
 
         # ---------- BUY conditions ----------
         buy_checks = {
-            "RSI": rsi < 40,
+            "RSI": rsi < 45,
             "MACD": macd > signal,
             "EMA200": current_price > ema200,
             "Trend": trend == "UP",
@@ -471,7 +471,7 @@ def get_debug_report(pair):
 
         # ---------- SELL conditions ----------
         sell_checks = {
-            "RSI": rsi > 60,
+            "RSI": rsi > 55,
             "MACD": macd < signal,
             "EMA200": current_price < ema200,
             "Trend": trend == "DOWN",
@@ -524,7 +524,7 @@ def get_debug_report(pair):
 
         # ---------- BUY ----------
         lines.append("BUY")
-        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt; 40)")
+        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt; 45)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = UP)")
@@ -537,7 +537,7 @@ def get_debug_report(pair):
         # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
-        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt; 60)")
+        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt; 55)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = DOWN)")
@@ -815,9 +815,9 @@ def main_loop():
                     if result:
                         rsi_data = calc_rsi(result[0])
                         if rsi_data:
-                            if 40 <= rsi_data <= 60:
+                            if 45 <= rsi_data <= 55:
                                 reason = f"RSI = {rsi_data} — السوق محايد، مراقب..."
-                            elif rsi_data < 40:
+                            elif rsi_data < 45:
                                 reason = f"RSI = {rsi_data} — قريب من منطقة BUY، مراقب MACD..."
                             else:
                                 reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
