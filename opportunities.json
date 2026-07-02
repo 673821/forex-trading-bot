@@ -82,5 +82,17 @@
     "rr": 1.5,
     "strength": 2,
     "cancelled": false
+  },
+  {
+    "date": "2026-07-02 17:02",
+    "time": "17:02 UTC",
+    "pair": "GBP/USD",
+    "direction": "BUY 📈",
+    "price": 1.3353,
+    "tp": 1.33895,
+    "sl": 1.332867,
+    "rr": 1.5,
+    "strength": 2,
+    "cancelled": false
   }
 ]
