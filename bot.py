@@ -350,9 +350,8 @@ def analyze_timeframe(pair, interval):
     # BUY — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Resistance distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     if (
-        rsi < 45
-        and macd > signal
-        and current_price > ema200
+        macd > signal
+    and current_price > ema200
     ):
         return {
             "direction": "BUY",
@@ -366,9 +365,8 @@ def analyze_timeframe(pair, interval):
     # SELL — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Support distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     elif (
-        rsi > 55
-        and macd < signal
-        and current_price < ema200
+        macd < signal
+    and current_price < ema200
     ):
         return {
             "direction": "SELL",
@@ -460,25 +458,35 @@ def get_debug_report(pair):
 
         # ---------- BUY conditions ----------
         buy_checks = {
-            "RSI": rsi < 45,
-            "MACD": macd > signal,
-            "EMA200": current_price > ema200,
-            "Trend": trend == "UP",
-            "Resistance": resistance_distance > atr * 0.5,
-        }
-        buy_score = sum(1 for v in buy_checks.values() if v)
-        buy_ready = buy_score == 5
+    "RSI": True,  # Optional
+    "MACD": macd > signal,
+    "EMA200": current_price > ema200,
+    "Trend": trend == "UP",
+    "Resistance": resistance_distance > atr * 0.5,
+}
+        buy_score = sum([
+    buy_checks["MACD"],
+    buy_checks["EMA200"],
+    buy_checks["Trend"],
+    buy_checks["Resistance"],
+])
+        buy_ready = buy_score == 4
 
         # ---------- SELL conditions ----------
         sell_checks = {
-            "RSI": rsi > 55,
-            "MACD": macd < signal,
-            "EMA200": current_price < ema200,
-            "Trend": trend == "DOWN",
-            "Support": support_distance > atr * 0.5,
-        }
-        sell_score = sum(1 for v in sell_checks.values() if v)
-        sell_ready = sell_score == 5
+    "RSI": True,  # Optional
+    "MACD": macd < signal,
+    "EMA200": current_price < ema200,
+    "Trend": trend == "DOWN",
+    "Support": support_distance > atr * 0.5,
+}
+        sell_score = sum([
+    sell_checks["MACD"],
+    sell_checks["EMA200"],
+    sell_checks["Trend"],
+    sell_checks["Support"],
+])
+        sell_ready = sell_score == 4
 
         tf_results[tf] = {
             "rsi": rsi,
@@ -524,12 +532,12 @@ def get_debug_report(pair):
 
         # ---------- BUY ----------
         lines.append("BUY")
-        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt; 45)")
+        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = UP)")
         lines.append(f"{'✅' if data['buy_checks']['Resistance'] else '❌'} Resistance = {round(data['resistance_distance'],6)} / {required_dist} (Remaining: {resistance_remaining})")
-        lines.append(f"Score: {data['buy_score']}/5")
+        lines.append(f"Score: {data['buy_score']}/4")
 
         if data["buy_ready"]:
             buy_ready_count += 1
@@ -537,12 +545,12 @@ def get_debug_report(pair):
         # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
-        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt; 55)")
+        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = DOWN)")
         lines.append(f"{'✅' if data['sell_checks']['Support'] else '❌'} Support = {round(data['support_distance'],6)} / {required_dist} (Remaining: {support_remaining})")
-        lines.append(f"Score: {data['sell_score']}/5")
+        lines.append(f"Score: {data['sell_score']}/4")
 
         if data["sell_ready"]:
             sell_ready_count += 1
