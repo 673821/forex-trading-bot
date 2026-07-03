@@ -526,5 +526,17 @@
     "rr": 1.5,
     "strength": 2,
     "cancelled": false
+  },
+  {
+    "date": "2026-07-03 07:10",
+    "time": "07:10 UTC",
+    "pair": "EUR/USD",
+    "direction": "BUY 📈",
+    "price": 1.14528,
+    "tp": 1.146014,
+    "sl": 1.144791,
+    "rr": 1.5,
+    "strength": 2,
+    "cancelled": false
   }
 ]
