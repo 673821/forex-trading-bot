@@ -16,7 +16,7 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 PORT = int(os.environ.get("PORT", 8080))
 
 PAIRS = ["EUR/USD", "GBP/USD"]
-TIMEFRAMES = ["15min", "1h", "4h"]
+TIMEFRAMES = ["15min", "1h"]
 OPPORTUNITIES_FILE = "opportunities.json"
 
 PAIR_CURRENCIES = {
@@ -38,7 +38,7 @@ def fetch_all_data():
     data_cache = {}
     for pair in PAIRS:
         data_cache[pair] = {}
-        for tf in ["15min", "1h", "4h"]:
+        for tf in TIMEFRAMES + ["5min"]:  # TIMEFRAMES (15min+1H) + 5min للـ entry timing
             result = get_price_data(pair, tf)
             data_cache[pair][tf] = result
 
@@ -185,9 +185,9 @@ def get_news_summary(pair):
 price_cache = {}
 
 CACHE_SECONDS = {
+    "5min": 300,
     "15min": 900,
-    "1h": 3600,
-    "4h": 14400
+    "1h": 3600
 }
 
 def get_price_data(pair, interval="15min", outputsize=250):
@@ -350,8 +350,9 @@ def analyze_timeframe(pair, interval):
     # BUY — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Resistance distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     if (
-        macd > signal
-    and current_price > ema200
+        rsi <= 47
+        and macd > signal
+        and current_price > ema200
     ):
         return {
             "direction": "BUY",
@@ -365,8 +366,9 @@ def analyze_timeframe(pair, interval):
     # SELL — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Support distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     elif (
-        macd < signal
-    and current_price < ema200
+        rsi >= 53
+        and macd < signal
+        and current_price < ema200
     ):
         return {
             "direction": "SELL",
@@ -399,11 +401,15 @@ def analyze_pair(pair):
     price = main["price"]
     atr = main["atr"]
     if "BUY" in direction:
-        tp = round(price + atr * 1.5, 6)
-        sl = round(price - atr, 6)
+        tp_distance = min(atr * 1.5, 0.00200)  # TP مكاب بـ 200 نقطة كحد أقصى
+        sl_distance = tp_distance / 1.5          # SL محسوب من TP باش يبقى RR = 1:1.5
+        tp = round(price + tp_distance, 6)
+        sl = round(price - sl_distance, 6)
     else:
-        tp = round(price - atr * 1.5, 6)
-        sl = round(price + atr, 6)
+        tp_distance = min(atr * 1.5, 0.00200)
+        sl_distance = tp_distance / 1.5
+        tp = round(price - tp_distance, 6)
+        sl = round(price + sl_distance, 6)
     rr = round(abs(tp - price) / abs(sl - price), 2)
     return {
         "pair": pair,
@@ -456,37 +462,23 @@ def get_debug_report(pair):
         resistance_distance = abs(resistance - current_price)
         support_distance = abs(current_price - support)
 
-        # ---------- BUY conditions ----------
+        # ---------- BUY conditions — نفس analyze_timeframe بالضبط ----------
         buy_checks = {
-    "RSI": True,  # Optional
-    "MACD": macd > signal,
-    "EMA200": current_price > ema200,
-    "Trend": trend == "UP",
-    "Resistance": resistance_distance > atr * 0.5,
-}
-        buy_score = sum([
-    buy_checks["MACD"],
-    buy_checks["EMA200"],
-    buy_checks["Trend"],
-    buy_checks["Resistance"],
-])
-        buy_ready = buy_score == 4
+            "RSI": rsi <= 47,
+            "MACD": macd > signal,
+            "EMA200": current_price > ema200,
+        }
+        buy_score = sum(1 for v in buy_checks.values() if v)
+        buy_ready = buy_score == 3
 
-        # ---------- SELL conditions ----------
+        # ---------- SELL conditions — نفس analyze_timeframe بالضبط ----------
         sell_checks = {
-    "RSI": True,  # Optional
-    "MACD": macd < signal,
-    "EMA200": current_price < ema200,
-    "Trend": trend == "DOWN",
-    "Support": support_distance > atr * 0.5,
-}
-        sell_score = sum([
-    sell_checks["MACD"],
-    sell_checks["EMA200"],
-    sell_checks["Trend"],
-    sell_checks["Support"],
-])
-        sell_ready = sell_score == 4
+            "RSI": rsi >= 53,
+            "MACD": macd < signal,
+            "EMA200": current_price < ema200,
+        }
+        sell_score = sum(1 for v in sell_checks.values() if v)
+        sell_ready = sell_score == 3
 
         tf_results[tf] = {
             "rsi": rsi,
@@ -509,13 +501,13 @@ def get_debug_report(pair):
     # ---------- بناء النص (الفورمات المبسطة النهائية) ----------
     lines = [f"🔍 {pair}"]
 
-    REQUIRED_CONFIRMATIONS = 2  # نفس الشرط ديال analyze_pair (directions.count(...) >= 2)
+    REQUIRED_CONFIRMATIONS = 2  # خاصهم يتفقو (15min + 1H)
     buy_ready_count = 0
     sell_ready_count = 0
 
     for tf in TIMEFRAMES:
         data = tf_results.get(tf)
-        tf_label = {"15min": "15min", "1h": "1H", "4h": "4H"}.get(tf, tf)
+        tf_label = {"15min": "15min", "1h": "1H"}.get(tf, tf)
 
         lines.append(f"\n━━━━━━━━")
         lines.append(f"{tf_label}")
@@ -525,19 +517,14 @@ def get_debug_report(pair):
             lines.append(f"⚠️ {err}")
             continue
 
-        required_dist = round(data['atr'] * 0.5, 6)
         macd_diff = round(data['macd'] - data['signal'], 6)
-        resistance_remaining = round(required_dist - data['resistance_distance'], 6)
-        support_remaining = round(required_dist - data['support_distance'], 6)
 
         # ---------- BUY ----------
         lines.append("BUY")
-        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
+        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt;= 47)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = UP)")
-        lines.append(f"{'✅' if data['buy_checks']['Resistance'] else '❌'} Resistance = {round(data['resistance_distance'],6)} / {required_dist} (Remaining: {resistance_remaining})")
-        lines.append(f"Score: {data['buy_score']}/4")
+        lines.append(f"Score: {data['buy_score']}/3")
 
         if data["buy_ready"]:
             buy_ready_count += 1
@@ -545,12 +532,10 @@ def get_debug_report(pair):
         # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
-        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
+        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt;= 53)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']} (Required = DOWN)")
-        lines.append(f"{'✅' if data['sell_checks']['Support'] else '❌'} Support = {round(data['support_distance'],6)} / {required_dist} (Remaining: {support_remaining})")
-        lines.append(f"Score: {data['sell_score']}/4")
+        lines.append(f"Score: {data['sell_score']}/3")
 
         if data["sell_ready"]:
             sell_ready_count += 1
@@ -568,10 +553,9 @@ def get_debug_report(pair):
 
 
 def get_strength_label(strength):
-    if strength == 3:
-        return "⭐⭐⭐ قوية جداً"
-    elif strength == 2:
-        return "⭐⭐ متوسطة"
+    if strength == 2:
+        return "⭐⭐ قوية"
+
     return "⭐ ضعيفة"
 
 
@@ -823,9 +807,9 @@ def main_loop():
                     if result:
                         rsi_data = calc_rsi(result[0])
                         if rsi_data:
-                            if 45 <= rsi_data <= 55:
+                            if 40 <= rsi_data <= 60:
                                 reason = f"RSI = {rsi_data} — السوق محايد، مراقب..."
-                            elif rsi_data < 45:
+                            elif rsi_data < 40:
                                 reason = f"RSI = {rsi_data} — قريب من منطقة BUY، مراقب MACD..."
                             else:
                                 reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
@@ -870,6 +854,15 @@ def main_loop():
                 for pair in PAIRS:
                     trade = analyze_pair(pair)
                     if not trade:
+                        continue
+
+                    # ⏱ تحقق من 5min entry timing
+                    # analyze_pair كتتأكد من 15min+1H — هنا نشوفو واش 5min كتأكد نفس الاتجاه
+                    # إذا 5min ماكاتأكدش، نستنى iteration جديدة (حوالي 15 دقيقة)
+                    tf5_result = analyze_timeframe(pair, "5min")
+                    trade_direction_core = "BUY" if "BUY" in trade["direction"] else "SELL"
+                    if not tf5_result or tf5_result["direction"] != trade_direction_core:
+                        print(f"⏱ {pair}: 15min+1H متفقين ({trade_direction_core}) ولكن 5min ماكاتأكدش — كنستنى نقطة دخول أحسن")
                         continue
 
                     danger_news, warning_news = get_high_impact_news(pair)
