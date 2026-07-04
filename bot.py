@@ -539,52 +539,54 @@ def get_debug_report(pair):
 
         if data["sell_ready"]:
             sell_ready_count += 1
+ 
     # ---------- 5min (Entry Confirmation Only) ----------
-result = get_cached_data(pair, "5min")
+    result = get_cached_data(pair, "5min")
+ 
+    if result:
+        closes, highs, lows = result
+ 
+        rsi = calc_rsi(closes)
+        macd, signal = calc_macd(closes)
+        atr = calc_atr(highs, lows, closes)
+        ema200 = calc_ema(closes, 200)
+ 
+        if rsi and macd is not None and atr and ema200:
+ 
+            current_price = closes[-1]
+            macd_diff = round(macd - signal, 6)
+ 
+            buy_checks = {
+                "RSI": rsi <= 47,
+                "MACD": macd > signal,
+                "EMA200": current_price > ema200,
+            }
+ 
+            sell_checks = {
+                "RSI": rsi >= 53,
+                "MACD": macd < signal,
+                "EMA200": current_price < ema200,
+            }
+ 
+            buy_score = sum(buy_checks.values())
+            sell_score = sum(sell_checks.values())
+ 
+            lines.append(f"\n━━━━━━━━")
+            lines.append("5min (Entry Confirmation Only)")
+ 
+            lines.append("BUY")
+            lines.append(f"{'✅' if buy_checks['RSI'] else '❌'} RSI = {rsi} (Required &lt;= 47)")
+            lines.append(f"{'✅' if buy_checks['MACD'] else '❌'} MACD = {macd} | Signal = {signal} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
+            lines.append(f"{'✅' if buy_checks['EMA200'] else '❌'} EMA200 → Price = {round(current_price,6)} | EMA200 = {round(ema200,6)}")
+            lines.append(f"Score: {buy_score}/3")
+ 
+            lines.append("")
+            lines.append("SELL")
+            lines.append(f"{'✅' if sell_checks['RSI'] else '❌'} RSI = {rsi} (Required &gt;= 53)")
+            lines.append(f"{'✅' if sell_checks['MACD'] else '❌'} MACD = {macd} | Signal = {signal} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
+            lines.append(f"{'✅' if sell_checks['EMA200'] else '❌'} EMA200 → Price = {round(current_price,6)} | EMA200 = {round(ema200,6)}")
+            lines.append(f"Score: {sell_score}/3")
 
-if result:
-    closes, highs, lows = result
-
-    rsi = calc_rsi(closes)
-    macd, signal = calc_macd(closes)
-    atr = calc_atr(highs, lows, closes)
-    ema200 = calc_ema(closes, 200)
-
-    if rsi and macd is not None and atr and ema200:
-
-        current_price = closes[-1]
-        macd_diff = round(macd - signal, 6)
-
-        buy_checks = {
-            "RSI": rsi <= 47,
-            "MACD": macd > signal,
-            "EMA200": current_price > ema200,
-        }
-
-        sell_checks = {
-            "RSI": rsi >= 53,
-            "MACD": macd < signal,
-            "EMA200": current_price < ema200,
-        }
-
-        buy_score = sum(buy_checks.values())
-        sell_score = sum(sell_checks.values())
-
-        lines.append(f"\n━━━━━━━━")
-        lines.append("5min (Entry Confirmation Only)")
-
-        lines.append("BUY")
-        lines.append(f"{'✅' if buy_checks['RSI'] else '❌'} RSI = {rsi} (Required <= 47)")
-        lines.append(f"{'✅' if buy_checks['MACD'] else '❌'} MACD = {macd} | Signal = {signal} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
-        lines.append(f"{'✅' if buy_checks['EMA200'] else '❌'} EMA200 → Price = {round(current_price,6)} | EMA200 = {round(ema200,6)}")
-        lines.append(f"Score: {buy_score}/3")
-
-        lines.append("")
-        lines.append("SELL")
-        lines.append(f"{'✅' if sell_checks['RSI'] else '❌'} RSI = {rsi} (Required >= 53)")
-        lines.append(f"{'✅' if sell_checks['MACD'] else '❌'} MACD = {macd} | Signal = {signal} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
-        lines.append(f"{'✅' if sell_checks['EMA200'] else '❌'} EMA200 → Price = {round(current_price,6)} | EMA200 = {round(ema200,6)}")
-        lines.append(f"Score: {sell_score}/3")
     # ---------- خلاصة فقط ----------
     trade_ready = buy_ready_count >= REQUIRED_CONFIRMATIONS or sell_ready_count >= REQUIRED_CONFIRMATIONS
 
