@@ -350,7 +350,7 @@ def analyze_timeframe(pair, interval):
     # BUY — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Resistance distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     if (
-        rsi <= 47
+        rsi <= 50
         and macd > signal
         and current_price > ema200
     ):
@@ -366,7 +366,7 @@ def analyze_timeframe(pair, interval):
     # SELL — Core conditions (mandatory): RSI + MACD + EMA200
     # Trend و Support distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
     elif (
-        rsi >= 53
+        rsi >= 50
         and macd < signal
         and current_price < ema200
     ):
@@ -464,7 +464,7 @@ def get_debug_report(pair):
 
         # ---------- BUY conditions — نفس analyze_timeframe بالضبط ----------
         buy_checks = {
-            "RSI": rsi <= 47,
+            "RSI": rsi <= 50,
             "MACD": macd > signal,
             "EMA200": current_price > ema200,
         }
@@ -473,7 +473,7 @@ def get_debug_report(pair):
 
         # ---------- SELL conditions — نفس analyze_timeframe بالضبط ----------
         sell_checks = {
-            "RSI": rsi >= 53,
+            "RSI": rsi >= 50,
             "MACD": macd < signal,
             "EMA200": current_price < ema200,
         }
@@ -521,7 +521,7 @@ def get_debug_report(pair):
 
         # ---------- BUY ----------
         lines.append("BUY")
-        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt;= 47)")
+        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt;= 50)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"Score: {data['buy_score']}/3")
@@ -532,60 +532,62 @@ def get_debug_report(pair):
         # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
-        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt;= 53)")
+        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt;= 50)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
         lines.append(f"Score: {data['sell_score']}/3")
 
         if data["sell_ready"]:
             sell_ready_count += 1
- 
+
     # ---------- 5min (Entry Confirmation Only) ----------
     result = get_cached_data(pair, "5min")
- 
+
     if result:
         closes, highs, lows = result
- 
+
         rsi = calc_rsi(closes)
         macd, signal = calc_macd(closes)
         atr = calc_atr(highs, lows, closes)
         ema200 = calc_ema(closes, 200)
- 
+
         if rsi and macd is not None and atr and ema200:
- 
+
             current_price = closes[-1]
             macd_diff = round(macd - signal, 6)
- 
+
+            # RSI اختياري فـ 5min — True دايما باش ماتأثرش على القرار
             buy_checks = {
-                "RSI": rsi <= 47,
+                "RSI": True,
                 "MACD": macd > signal,
                 "EMA200": current_price > ema200,
             }
- 
+
             sell_checks = {
-                "RSI": rsi >= 53,
+                "RSI": True,
                 "MACD": macd < signal,
                 "EMA200": current_price < ema200,
             }
- 
-            buy_score = sum(buy_checks.values())
-            sell_score = sum(sell_checks.values())
- 
+
+            # Score/2 لأن RSI اختياري (MACD + EMA200 فقط)
+            buy_score = sum([buy_checks["MACD"], buy_checks["EMA200"]])
+            sell_score = sum([sell_checks["MACD"], sell_checks["EMA200"]])
+
             lines.append(f"\n━━━━━━━━")
             lines.append("5min (Entry Confirmation Only)")
- 
+
             lines.append("BUY")
-            lines.append(f"{'✅' if buy_checks['RSI'] else '❌'} RSI = {rsi} (Required &lt;= 47)")
+            lines.append(f"ℹ️ RSI = {rsi} (Optional)")
             lines.append(f"{'✅' if buy_checks['MACD'] else '❌'} MACD = {macd} | Signal = {signal} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
             lines.append(f"{'✅' if buy_checks['EMA200'] else '❌'} EMA200 → Price = {round(current_price,6)} | EMA200 = {round(ema200,6)}")
-            lines.append(f"Score: {buy_score}/3")
- 
+            lines.append(f"Score: {buy_score}/2")
+
             lines.append("")
             lines.append("SELL")
-            lines.append(f"{'✅' if sell_checks['RSI'] else '❌'} RSI = {rsi} (Required &gt;= 53)")
+            lines.append(f"ℹ️ RSI = {rsi} (Optional)")
             lines.append(f"{'✅' if sell_checks['MACD'] else '❌'} MACD = {macd} | Signal = {signal} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
             lines.append(f"{'✅' if sell_checks['EMA200'] else '❌'} EMA200 → Price = {round(current_price,6)} | EMA200 = {round(ema200,6)}")
-            lines.append(f"Score: {sell_score}/3")
+            lines.append(f"Score: {sell_score}/2")
 
     # ---------- خلاصة فقط ----------
     trade_ready = buy_ready_count >= REQUIRED_CONFIRMATIONS or sell_ready_count >= REQUIRED_CONFIRMATIONS
