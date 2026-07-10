@@ -114,7 +114,7 @@ def get_high_impact_news(pair):
                 warning_events.append(event["title"])
         return danger_events, warning_events
     except Exception as e:
-       print(f"News API Error: {e}")
+        print(f"News API Error: {e}")
         return [], []
 
 def get_market_summary(pair):
