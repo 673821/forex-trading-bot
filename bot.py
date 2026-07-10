@@ -92,6 +92,13 @@ def get_high_impact_news(pair):
         danger_events = []
         warning_events = []
         for event in events:
+            print(
+                event.get("title"),
+                event.get("currency"),
+                event.get("impact"),
+                event.get("date")
+            )
+
             if event.get("impact") != "High":
                 continue
             if event.get("currency") not in currencies:
@@ -106,7 +113,8 @@ def get_high_impact_news(pair):
             elif 120 < diff_minutes <= 480:
                 warning_events.append(event["title"])
         return danger_events, warning_events
-    except:
+    except Exception as e:
+    print(f"News API Error: {e}"):
         return [], []
 
 def get_market_summary(pair):
