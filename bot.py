@@ -354,14 +354,31 @@ def analyze_timeframe(pair, interval):
 
     resistance_distance = abs(resistance - current_price)
     support_distance = abs(current_price - support)
+    sr_threshold = round(atr * 1.2, 6)
 
-    # BUY — Core conditions (mandatory): RSI + MACD + EMA200
-    # Trend و Resistance distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
-    if (
-        rsi <= 50
-        and macd > signal
-        and current_price > ema200
-    ):
+    # BUY checks — RSI اختياري دايما True، MACD+EMA200+Trend إلزاميين
+    buy_checks = {
+        "RSI":    True,
+        "MACD":   macd > signal,
+        "EMA200": current_price > ema200,
+        "Trend":  trend == "UP",
+    }
+    buy_score = sum(buy_checks.values())
+    buy_sr_ok = resistance_distance > sr_threshold   # فلتر حماية — ماشي فالـ score
+    buy_ready = buy_score == 4 and buy_sr_ok
+
+    # SELL checks — RSI اختياري دايما True، MACD+EMA200+Trend إلزاميين
+    sell_checks = {
+        "RSI":    True,
+        "MACD":   macd < signal,
+        "EMA200": current_price < ema200,
+        "Trend":  trend == "DOWN",
+    }
+    sell_score = sum(sell_checks.values())
+    sell_sr_ok = support_distance > sr_threshold     # فلتر حماية — ماشي فالـ score
+    sell_ready = sell_score == 4 and sell_sr_ok
+
+    if buy_ready:
         return {
             "direction": "BUY",
             "rsi": rsi,
@@ -371,13 +388,7 @@ def analyze_timeframe(pair, interval):
             "trend": trend
         }
 
-    # SELL — Core conditions (mandatory): RSI + MACD + EMA200
-    # Trend و Support distance كيبقاو كيتحسبو ويبانو فالنتيجة (للـ reports)، ولكن ماشي شرط إلزامي
-    elif (
-        rsi >= 50
-        and macd < signal
-        and current_price < ema200
-    ):
+    elif sell_ready:
         return {
             "direction": "SELL",
             "rsi": rsi,
@@ -469,24 +480,29 @@ def get_debug_report(pair):
         support, resistance = get_support_resistance(highs, lows)
         resistance_distance = abs(resistance - current_price)
         support_distance = abs(current_price - support)
+        sr_threshold = round(atr * 1.2, 6)
 
         # ---------- BUY conditions — نفس analyze_timeframe بالضبط ----------
         buy_checks = {
-            "RSI": rsi <= 50,
+            "RSI": True,
             "MACD": macd > signal,
             "EMA200": current_price > ema200,
+            "Trend": trend == "UP",
         }
         buy_score = sum(1 for v in buy_checks.values() if v)
-        buy_ready = buy_score == 3
+        buy_sr_ok = resistance_distance > sr_threshold
+        buy_ready = buy_score == 4 and buy_sr_ok
 
         # ---------- SELL conditions — نفس analyze_timeframe بالضبط ----------
         sell_checks = {
-            "RSI": rsi >= 50,
+            "RSI": True,
             "MACD": macd < signal,
             "EMA200": current_price < ema200,
+            "Trend": trend == "DOWN",
         }
         sell_score = sum(1 for v in sell_checks.values() if v)
-        sell_ready = sell_score == 3
+        sell_sr_ok = support_distance > sr_threshold
+        sell_ready = sell_score == 4 and sell_sr_ok
 
         tf_results[tf] = {
             "rsi": rsi,
@@ -498,11 +514,14 @@ def get_debug_report(pair):
             "current_price": current_price,
             "resistance_distance": resistance_distance,
             "support_distance": support_distance,
+            "sr_threshold": sr_threshold,
             "buy_checks": buy_checks,
             "buy_score": buy_score,
+            "buy_sr_ok": buy_sr_ok,
             "buy_ready": buy_ready,
             "sell_checks": sell_checks,
             "sell_score": sell_score,
+            "sell_sr_ok": sell_sr_ok,
             "sell_ready": sell_ready,
         }
 
@@ -529,10 +548,12 @@ def get_debug_report(pair):
 
         # ---------- BUY ----------
         lines.append("BUY")
-        lines.append(f"{'✅' if data['buy_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &lt;= 50)")
+        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"Score: {data['buy_score']}/3")
+        lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']}")
+        lines.append(f"Score: {data['buy_score']}/4")
+        lines.append(f"{'✅' if data['buy_sr_ok'] else '❌'} SR Filter → Resistance Dist = {round(data['resistance_distance'],6)} | Required > {data['sr_threshold']}")
 
         if data["buy_ready"]:
             buy_ready_count += 1
@@ -540,10 +561,12 @@ def get_debug_report(pair):
         # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
-        lines.append(f"{'✅' if data['sell_checks']['RSI'] else '❌'} RSI = {data['rsi']} (Required &gt;= 50)")
+        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
         lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"Score: {data['sell_score']}/3")
+        lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']}")
+        lines.append(f"Score: {data['sell_score']}/4")
+        lines.append(f"{'✅' if data['sell_sr_ok'] else '❌'} SR Filter → Support Dist = {round(data['support_distance'],6)} | Required > {data['sr_threshold']}")
 
         if data["sell_ready"]:
             sell_ready_count += 1
