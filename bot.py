@@ -364,7 +364,7 @@ def check_confirmation_candle(closes, highs, lows, direction):
         is_prev_bullish = closes[-2] > closes[-3]
         body_curr = closes[-2] - closes[-1]
         body_prev = closes[-2] - closes[-3]
-        bearish_engulfing = is_curr_bearish and is_prev_bearish and (body_curr > body_prev)
+        bearish_engulfing = is_curr_bearish and is_prev_bullish and (body_curr > body_prev)
 
         return strong_bearish or bearish_engulfing
     return False
