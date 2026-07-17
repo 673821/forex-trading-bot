@@ -724,11 +724,12 @@ def get_debug_report(pair):
     return "\n".join(lines)
 
 def get_strength_label(strength):
-    if strength == 3:
+    if strength >= 3:
         return "⭐⭐⭐ قوية جداً"
-    elif strength == 2:
+    elif strength >= 2:
         return "⭐⭐ قوية"
-    return "⭐ ضعيفة"
+    else:
+        return "⭐ ضعيفة"
 
 def check_pre_signal(pair, rsi_15):
     """كيشوف واش RSI ديال 15min + 1h كيقتربو من منطقة الإشارة"""
