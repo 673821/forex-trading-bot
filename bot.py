@@ -1145,11 +1145,3 @@ if __name__ == "__main__":
     server_thread.daemon = True
     server_thread.start()
     main_loop()
- bghit ntzakd mn hda lcode dyal standard bot 2 f telegram chno bdalti fiih f had l'exemple : 
-get_debug_report()
- get_strength_label()
- get_cached_data() or get_price_data()
- main_loop() dyl report 24h/24h 
-
-t2akd mzyan mni ga3 t3dilat li darna
-_
