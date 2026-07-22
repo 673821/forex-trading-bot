@@ -238,8 +238,9 @@ def get_price_data(pair, interval="15min", outputsize=250, bypass_cache=False):
         closes = [float(v["close"]) for v in reversed(data["values"])]
         highs = [float(v["high"]) for v in reversed(data["values"])]
         lows = [float(v["low"]) for v in reversed(data["values"])]
+        opens = [float(v["open"]) for v in reversed(data["values"])]
 
-        result = (closes, highs, lows)
+        result = (closes, highs, lows, opens)
 
         price_cache[cache_key] = {
             "time": now_ts,
@@ -379,7 +380,7 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
     if not result:
         return None
 
-    closes, highs, lows = result
+    closes, highs, lows, opens = result
 
     rsi = calc_rsi(closes)
     macd, signal = calc_macd(closes)
@@ -389,62 +390,50 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
         return None
 
     current_price = closes[-1]
-    ema200 = calc_ema(closes, 200)
 
-    if ema200 is None:
-        return None
+    # بالنسبة للفريمات الكبيرة (1H و 4H): تحليل الاتجاه العام الكامل
+    if interval in ["1h", "4h"]:
+        ema200 = calc_ema(closes, 200)
+        if ema200 is None:
+            return None
+        trend = get_trend_structure(closes)
+        support, resistance = get_support_resistance(highs, lows)
+        resistance_distance = abs(resistance - current_price)
+        support_distance = abs(current_price - support)
+        sr_threshold = round(atr * 1.2, 6)
 
-    # Trend Structure
-    trend = get_trend_structure(closes)
-
-    # Support / Resistance
-    support, resistance = get_support_resistance(highs, lows)
-
-    resistance_distance = abs(resistance - current_price)
-    support_distance = abs(current_price - support)
-    sr_threshold = round(atr * 1.2, 6)
-
-    # BUY checks
-    buy_checks = {
-        "RSI":    True,
-        "MACD":   macd > signal,
-        "EMA200": current_price > ema200,
-        "Trend":  trend == "UP",
-    }
-    buy_score = sum(buy_checks.values())
-    buy_sr_ok = resistance_distance > sr_threshold
-    buy_ready = buy_score == 4 and buy_sr_ok
-
-    # SELL checks
-    sell_checks = {
-        "RSI":    True,
-        "MACD":   macd < signal,
-        "EMA200": current_price < ema200,
-        "Trend":  trend == "DOWN",
-    }
-    sell_score = sum(sell_checks.values())
-    sell_sr_ok = support_distance > sr_threshold
-    sell_ready = sell_score == 4 and sell_sr_ok
-
-    if buy_ready:
-        return {
-            "direction": "BUY",
-            "rsi": rsi,
-            "atr": atr,
-            "price": current_price,
-            "ema200": ema200,
-            "trend": trend
+        # شروط الشراء الكاملة للفريمات الكبيرة
+        buy_checks = {
+            "RSI":    True,
+            "MACD":   macd > signal,
+            "EMA200": current_price > ema200,
+            "Trend":  trend == "UP",
         }
+        buy_ready = sum(buy_checks.values()) == 4 and (resistance_distance > sr_threshold)
 
-    elif sell_ready:
-        return {
-            "direction": "SELL",
-            "rsi": rsi,
-            "atr": atr,
-            "price": current_price,
-            "ema200": ema200,
-            "trend": trend
+        # شروط البيع الكاملة للفريمات الكبيرة
+        sell_checks = {
+            "RSI":    True,
+            "MACD":   macd < signal,
+            "EMA200": current_price < ema200,
+            "Trend":  trend == "DOWN",
         }
+        sell_ready = sum(sell_checks.values()) == 4 and (support_distance > sr_threshold)
+
+        if buy_ready:
+            return {"direction": "BUY", "rsi": rsi, "atr": atr, "price": current_price}
+        elif sell_ready:
+            return {"direction": "SELL", "rsi": rsi, "atr": atr, "price": current_price}
+
+    # بالنسبة لفريم الدخول (15min): التحقق من الـ MACD فقط (مع الـ Pullback وشمعة التأكيد لاحقاً)
+    elif interval == "15min":
+        buy_ready = macd > signal
+        sell_ready = macd < signal
+
+        if buy_ready:
+            return {"direction": "BUY", "rsi": rsi, "atr": atr, "price": current_price}
+        elif sell_ready:
+            return {"direction": "SELL", "rsi": rsi, "atr": atr, "price": current_price}
 
     return None
 
@@ -465,7 +454,7 @@ def check_setup_alignment(pair, bypass_cache=False):
     align_1h = ("1h" in results and results["1h"]["direction"] == m15_direction)
     align_4h = ("4h" in results and results["4h"]["direction"] == m15_direction)
 
-    # يجب أن تتوافق 15min مع 1H أو 4H على الأقل
+    # يجب أن تتوافق 15min مع 1H أو 4H على الأقل لفتح صفقة
     if not (align_1h or align_4h):
         return None
 
@@ -513,7 +502,7 @@ def analyze_pair(pair, bypass_cache=False):
     if not result_15:
         return None
 
-    closes, highs, lows = result_15
+    closes, highs, lows, opens = result_15
     atr = calc_atr(highs, lows, closes)
     ema200_series = calc_ema_series(closes, 200)
 
@@ -575,159 +564,198 @@ def analyze_pair(pair, bypass_cache=False):
     }
 
 def get_debug_report(pair):
-    print(f"Enter get_debug_report({pair})")
-    tf_results = {}
+    """تقرير المراقبة وتحديث مراحل الـ State Machine"""
+    result_15 = get_cached_data(pair, "15min") or get_price_data(pair, "15min")
+    result_1h = get_cached_data(pair, "1h") or get_price_data(pair, "1h")
+    result_4h = get_cached_data(pair, "4h") or get_price_data(pair, "4h")
 
-    for tf in TIMEFRAMES:
-        result = get_cached_data(pair, tf)
+    if not result_15:
+        return f"🔍 {pair} - Market Status Report\n━━━━━━━━━━━━━━━━\n⚠️ فريم 15min خالي من البيانات حالياً."
 
-        if not result:
-            tf_results[tf] = {"error": "ماكاينش بيانات (cache خاوية)"}
-            continue
+    closes, highs, lows, opens = result_15
+    current_price = closes[-1]
 
-        closes, highs, lows = result
+    lines = [f"🔍 {pair} - Market Status Report", "━━━━━━━━━━━━━━━━"]
 
-        rsi = calc_rsi(closes)
-        macd, signal = calc_macd(closes)
-        atr = calc_atr(highs, lows, closes)
-        ema200 = calc_ema(closes, 200)
-        trend = get_trend_structure(closes)
+    # ==================== 15min (SMC Logic) ====================
+    lines.append("15min (Entry Confirmation)")
+    state_key = f"{pair}_15min"
+    state = active_setups.get(pair, {})
+    direction = state.get("direction", None)
 
-        if rsi is None or macd is None or atr is None or ema200 is None or trend is None:
-            missing = []
-            if rsi is None: missing.append("RSI")
-            if macd is None: missing.append("MACD")
-            if atr is None: missing.append("ATR")
-            if ema200 is None: missing.append("EMA200")
-            if trend is None: missing.append("Trend")
-            tf_results[tf] = {"error": f"بيانات ناقصة: {', '.join(missing)}"}
-            continue
-
-        current_price = closes[-1]
-        support, resistance = get_support_resistance(highs, lows)
-        resistance_distance = abs(resistance - current_price)
-        support_distance = abs(current_price - support)
-        sr_threshold = round(atr * 1.2, 6)
-
-        # ---------- BUY conditions ----------
-        buy_checks = {
-            "RSI": True,
-            "MACD": macd > signal,
-            "EMA200": current_price > ema200,
-            "Trend": trend == "UP",
-        }
-        buy_score = sum(1 for v in buy_checks.values() if v)
-        buy_sr_ok = resistance_distance > sr_threshold
-        buy_ready = buy_score == 4 and buy_sr_ok
-
-        # ---------- SELL conditions ----------
-        sell_checks = {
-            "RSI": True,
-            "MACD": macd < signal,
-            "EMA200": current_price < ema200,
-            "Trend": trend == "DOWN",
-        }
-        sell_score = sum(1 for v in sell_checks.values() if v)
-        sell_sr_ok = support_distance > sr_threshold
-        sell_ready = sell_score == 4 and sell_sr_ok
-
-        # Extra checks for 15min Trigger
-        pullback_ok = False
-        buy_confirmed = False
-        sell_confirmed = False
-        if tf == "15min":
-            near_threshold = 0.25 * atr
-            ema200_series = calc_ema_series(closes, 200)
-            if ema200_series:
+    # دالة مساعدة لإنشاء Checklist لكل اتجاه
+    def build_checklist(for_dir):
+        if direction == for_dir:
+            c_setup = "✅ Trend Setup: Aligned"
+            # للـ Pullback والـ Candle، كنجيبوهم من الـ analyze_pair الحالية
+            closes_15, highs_15, lows_15, opens_15 = result_15
+            atr = calc_atr(highs_15, lows_15, closes_15)
+            ema200_series = calc_ema_series(closes_15, 200)
+            
+            pullback_ok = False
+            if atr and ema200_series:
+                near_threshold = 0.25 * atr
                 for i in [-1, -2, -3]:
-                    if abs(i) <= len(closes):
+                    if abs(i) <= len(closes_15):
                         ema_i = ema200_series[i]
-                        high_i = highs[i]
-                        low_i = lows[i]
-                        close_i = closes[i]
+                        high_i = highs_15[i]
+                        low_i = lows_15[i]
+                        close_i = closes_15[i]
                         touch = (low_i <= ema_i <= high_i)
                         near = (abs(close_i - ema_i) <= near_threshold) or (abs(high_i - ema_i) <= near_threshold) or (abs(low_i - ema_i) <= near_threshold)
                         if touch or near:
                             pullback_ok = True
                             break
-            buy_confirmed = check_confirmation_candle(closes, highs, lows, "BUY")
-            sell_confirmed = check_confirmation_candle(closes, highs, lows, "SELL")
+            
+            confirmed_ok = check_confirmation_candle(closes_15, highs_15, lows_15, direction)
+            
+            c_pb = "✅ Pullback: Touched/Near" if pullback_ok else "⏳ Pullback: Waiting"
+            c_candle = "✅ Candle Conf: Confirmed" if confirmed_ok else "⏳ Candle Conf: Waiting"
+            
+            score = 1 + (1 if pullback_ok else 0) + (1 if confirmed_ok else 0)
+        else:
+            c_setup = "❌ Trend Setup: No Setup"
+            c_pb = "❌ Pullback: Waiting"
+            c_candle = "❌ Candle Conf: Waiting"
+            score = 0
 
-        tf_results[tf] = {
-            "rsi": rsi,
-            "macd": macd,
-            "signal": signal,
-            "atr": atr,
-            "ema200": ema200,
-            "trend": trend,
-            "current_price": current_price,
-            "resistance_distance": resistance_distance,
-            "support_distance": support_distance,
-            "sr_threshold": sr_threshold,
-            "buy_checks": buy_checks,
-            "buy_score": buy_score,
-            "buy_sr_ok": buy_sr_ok,
-            "buy_ready": buy_ready,
-            "sell_checks": sell_checks,
-            "sell_score": sell_score,
-            "sell_sr_ok": sell_sr_ok,
-            "sell_ready": sell_ready,
-            "pullback_ok": pullback_ok,
-            "buy_confirmed": buy_confirmed,
-            "sell_confirmed": sell_confirmed,
-        }
+        return [
+            f"{c_setup}",
+            f"{c_pb}",
+            f"{c_candle}",
+            f"Score: {score}/3"
+        ]
 
-    lines = [f"🔍 {pair}"]
+    lines.append("BUY")
+    lines.extend(build_checklist("BUY"))
+    lines.append("")
+    lines.append("SELL")
+    lines.extend(build_checklist("SELL"))
+    lines.append("━━━━━━━━━━━━━━━━")
 
-    for tf in TIMEFRAMES:
-        data = tf_results.get(tf)
-        tf_label = {"15min": "15min", "1h": "1H", "4h": "4H"}.get(tf, tf)
+    # ==================== 1H (Trend Context) ====================
+    lines.append("1H (Trend Context)")
+    if result_1h:
+        closes_1h, _, _, _ = result_1h
+        ema_1h = calc_ema(closes_1h, 200)
+        trend_1h = get_trend_structure(closes_1h)
+        price_1h = closes_1h[-1]
 
-        lines.append(f"\n━━━━━━━━")
-        lines.append(f"{tf_label}")
-
-        if not data or "error" in data:
-            err = data["error"] if data else "ماكاينش بيانات"
-            lines.append(f"⚠️ {err}")
-            continue
-
-        macd_diff = round(data['macd'] - data['signal'], 6)
-
-        # ---------- BUY ----------
+        # BUY 1H
+        b_ema = price_1h > ema_1h if ema_1h else False
+        b_trend = trend_1h == "UP"
+        b_score = (2 if b_ema and b_trend else (1 if b_ema or b_trend else 0))
         lines.append("BUY")
-        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
-        lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
-        lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']}")
-        if tf == "15min":
-            lines.append(f"{'✅' if data['pullback_ok'] else '❌'} Pullback (Touch/Near)")
-            lines.append(f"{'✅' if data['buy_confirmed'] else '❌'} Confirmation (Strong/Engulfing)")
-        lines.append(f"Score: {data['buy_score']}/4")
-        lines.append(f"{'✅' if data['buy_sr_ok'] else '❌'} SR Filter → Resistance Dist = {round(data['resistance_distance'],6)} | Required > {data['sr_threshold']}")
+        if b_ema:
+            lines.append(f"✅ EMA200: Price ({price_1h}) > EMA ({round(ema_1h, 5) if ema_1h else 0})")
+        else:
+            lines.append(f"❌ EMA200: Price < EMA ({round(ema_1h, 5) if ema_1h else 0}) (Bullish ❌)")
+        
+        if b_trend:
+            lines.append("✅ Trend Structure: UP (Higher Highs)")
+        else:
+            lines.append(f"❌ Trend Structure: {trend_1h} (Bullish ❌)")
+        lines.append(f"Score: {b_score}/2")
 
-        # ---------- SELL ----------
+        # SELL 1H
+        s_ema = price_1h < ema_1h if ema_1h else False
+        s_trend = trend_1h == "DOWN"
+        s_score = (2 if s_ema and s_trend else (1 if s_ema or s_trend else 0))
         lines.append("")
         lines.append("SELL")
-        lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
-        lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
-        lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']}")
-        if tf == "15min":
-            lines.append(f"{'✅' if data['pullback_ok'] else '❌'} Pullback (Touch/Near)")
-            lines.append(f"{'✅' if data['sell_confirmed'] else '❌'} Confirmation (Strong/Engulfing)")
-        lines.append(f"Score: {data['sell_score']}/4")
-        lines.append(f"{'✅' if data['sell_sr_ok'] else '❌'} SR Filter → Support Dist = {round(data['support_distance'],6)} | Required > {data['sr_threshold']}")
+        if s_ema:
+            lines.append(f"✅ EMA200: Price ({price_1h}) < EMA ({round(ema_1h, 5) if ema_1h else 0})")
+        else:
+            lines.append(f"❌ EMA200: Price > EMA ({round(ema_1h, 5) if ema_1h else 0}) (Bearish ❌)")
+        
+        if s_trend:
+            lines.append("✅ Trend Structure: DOWN (Lower Highs)")
+        else:
+            lines.append(f"❌ Trend Structure: {trend_1h} (Bearish ❌)")
+        lines.append(f"Score: {s_score}/2")
+    else:
+        lines.append("⚠️ فريم 1H خالي من البيانات حالياً.")
+    lines.append("━━━━━━━━━━━━━━━━")
 
-    print(f"Exit get_debug_report({pair})")
+    # ==================== 4H (Major Trend) ====================
+    lines.append("4H (Major Trend)")
+    if result_4h:
+        closes_4h, _, _, _ = result_4h
+        ema_4h = calc_ema(closes_4h, 200)
+        trend_4h = get_trend_structure(closes_4h)
+        price_4h = closes_4h[-1]
+
+        # BUY 4H
+        b_ema = price_4h > ema_4h if ema_4h else False
+        b_trend = trend_4h == "UP"
+        b_score = (2 if b_ema and b_trend else (1 if b_ema or b_trend else 0))
+        lines.append("BUY")
+        if b_ema:
+            lines.append("✅ EMA200: Price > EMA200")
+        else:
+            lines.append("❌ EMA200: Price < EMA200 (Bullish ❌)")
+        
+        if b_trend:
+            lines.append("✅ Trend Structure: UP")
+        else:
+            lines.append(f"❌ Trend Structure: {trend_4h} (Bullish ❌)")
+        lines.append(f"Score: {b_score}/2")
+
+        # SELL 4H
+        s_ema = price_4h < ema_4h if ema_4h else False
+        s_trend = trend_4h == "DOWN"
+        s_score = (2 if s_ema and s_trend else (1 if s_ema or s_trend else 0))
+        lines.append("")
+        lines.append("SELL")
+        if s_ema:
+            lines.append("✅ EMA200: Price < EMA200")
+        else:
+            lines.append("❌ EMA200: Price > EMA200 (Bearish ❌)")
+        
+        if s_trend:
+            lines.append("✅ Trend Structure: DOWN")
+        else:
+            lines.append(f"❌ Trend Structure: {trend_4h} (Bearish ❌)")
+        lines.append(f"Score: {s_score}/2")
+    else:
+        lines.append("⚠️ فريم 4H خالي من البيانات حالياً.")
+    lines.append("━━━━━━━━━━━━━━━━")
+
+    # ==================== Overall Status ====================
+    status_label = "⏳ Waiting for 15min Setup Alignment"
+    strength_label = "⭐ Bronze (No Setup)"
+    
+    if direction:
+        status_label = f"⏳ Setup Active ({direction}) — Monitoring Pullback/Candle"
+
+        # Stars Rating
+        h1_bias = get_timeframe_bias(pair, "1h")
+        h4_bias = get_timeframe_bias(pair, "4h")
+        confirmed_count = 1
+        if h1_bias == direction:
+            confirmed_count += 1
+        if h4_bias == direction:
+            confirmed_count += 1
+
+        if confirmed_count == 3:
+            strength_label = "⭐⭐⭐ Gold (4H + 1H + 15m Alignment OK)"
+        elif confirmed_count == 2:
+            strength_label = "⭐⭐ Silver (1H + 15m Alignment OK)"
+        else:
+            strength_label = "⭐ Bronze (15m only)"
+
+    lines.append(f"Overall Status: {status_label}")
+    lines.append(f"Strength: {strength_label}")
+    lines.append(f"Price: {current_price}")
+
     return "\n".join(lines)
 
 def get_strength_label(strength):
-    if strength >= 3:
-        return "⭐⭐⭐ قوية جداً"
-    elif strength >= 2:
-        return "⭐⭐ قوية"
-    else:
-        return "⭐ ضعيفة"
+    if strength == 3:
+        return "⭐⭐⭐ Gold (4H + 1H + 15m)"
+    elif strength == 2:
+        return "⭐⭐ Silver (1H + 15m)"
+    return "⭐ Bronze (15m only)"
 
 def check_pre_signal(pair, rsi_15):
     """كيشوف واش RSI ديال 15min + 1h كيقتربو من منطقة الإشارة"""
@@ -959,11 +987,11 @@ def main_loop():
                 time.sleep(900)
                 continue
 
-            # جيب كل البيانات مرة واحدة فبداية كل run
+            # جلب البيانات بشكل مستمر ومحمي
             fetch_all_data()
 
-            # تقرير كل ساعة
-            if now.hour != last_report_hour and now.minute < 15 and not waiting_confirmation:
+            # تقرير كل ساعة دقيق ومحمي ضد زحف الدقائق (Drift)
+            if now.hour != last_report_hour and not waiting_confirmation:
                 last_report_hour = now.hour
                 pairs_status = {}
                 for pair in PAIRS:
@@ -1117,3 +1145,11 @@ if __name__ == "__main__":
     server_thread.daemon = True
     server_thread.start()
     main_loop()
+ bghit ntzakd mn hda lcode dyal standard bot 2 f telegram chno bdalti fiih f had l'exemple : 
+get_debug_report()
+ get_strength_label()
+ get_cached_data() or get_price_data()
+ main_loop() dyl report 24h/24h 
+
+t2akd mzyan mni ga3 t3dilat li darna
+_
