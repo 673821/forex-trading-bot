@@ -672,7 +672,7 @@ def get_debug_report(pair):
             lines.append("✅ Trend Structure: DOWN (Lower Highs)")
         else:
             lines.append(f"❌ Trend Structure: {trend_1h} (Bearish ❌)")
-        lines.append(f"Score: {s_score}/2")
+            lines.append(f"Score: {s_score}/2")
     else:
         lines.append("⚠️ فريم 1H خالي من البيانات حالياً.")
     lines.append("━━━━━━━━━━━━━━━━")
