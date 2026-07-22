@@ -24,28 +24,23 @@ PAIR_CURRENCIES = {
     "GBP/USD": ["GBP", "USD"],
 }
 
-# حالة التريد المنتظر للتأكيد
 pending_trade = {}
 waiting_confirmation = False
 
-# تتبع الـ Setups النشطة لكل زوج
 active_setups = {}
 
-# Cache ديال البيانات باش ما نطلبوش أكثر من مرة
 data_cache = {}
 
 def fetch_all_data():
-    """كيجيب بيانات كل الأزواج مرة واحدة ويحفظها فالـ cache"""
     global data_cache
     data_cache = {}
     for pair in PAIRS:
         data_cache[pair] = {}
-        for tf in TIMEFRAMES:  # تم حذف الـ 5min نهائياً
+        for tf in TIMEFRAMES:
             result = get_price_data(pair, tf)
             data_cache[pair][tf] = result
 
 def get_cached_data(pair, interval):
-    """كيرجع البيانات من الـ cache"""
     return data_cache.get(pair, {}).get(interval, None)
 
 def send_telegram(msg, reply_markup=None):
@@ -75,10 +70,8 @@ def answer_callback(callback_query_id):
     requests.post(url, json={"callback_query_id": callback_query_id})
 
 def set_webhook():
-    # امسح الـ webhook القديم أولاً
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook")
     time.sleep(2)
-    # سجل الجديد
     webhook_url = "https://forex-trading-bot-production-4f87.up.railway.app/webhook"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
     r = requests.post(url, json={"url": webhook_url})
@@ -120,7 +113,6 @@ def get_high_impact_news(pair):
         return [], []
 
 def get_market_summary(pair):
-    """كيجيب ملخص تحركات السوق ديال اليوم"""
     try:
         result_1h = get_cached_data(pair, "1h") or get_price_data(pair, "1h", 24)
         result_15 = get_cached_data(pair, "15min") or get_price_data(pair, "15min", 8)
@@ -130,20 +122,17 @@ def get_market_summary(pair):
         closes_1h = result_1h[0]
         closes_15 = result_15[0]
 
-        # تحرك اليوم
         open_price = closes_1h[0]
         current = closes_1h[-1]
         change = round(current - open_price, 6)
         change_pct = round((change / open_price) * 100, 3)
         direction_emoji = "📈" if change > 0 else "📉"
 
-        # أعلى وأدنى اليوم
         highs_1h = result_1h[1]
         lows_1h = result_1h[2]
         high_day = round(max(highs_1h), 6)
         low_day = round(min(lows_1h), 6)
 
-        # تحرك آخر ساعة
         last_hour_change = round(closes_15[-1] - closes_15[0], 6)
         last_hour_emoji = "⬆️" if last_hour_change > 0 else "⬇️"
 
@@ -161,7 +150,6 @@ def get_market_summary(pair):
         return None
 
 def get_news_summary(pair):
-    """كيجيب ملخص الأخبار ديال اليوم"""
     try:
         currencies = PAIR_CURRENCIES.get(pair, [])
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
@@ -340,12 +328,10 @@ def check_confirmation_candle(closes, highs, lows, direction):
     if len(closes) < 3:
         return False
     if direction == "BUY":
-        # Strong Bullish
         body = closes[-1] - closes[-2]
         candle_range = highs[-1] - lows[-1]
         strong_bullish = body > 0 and candle_range > 0 and (body >= 0.5 * candle_range)
 
-        # Bullish Engulfing
         is_curr_bullish = closes[-1] > closes[-2]
         is_prev_bearish = closes[-2] < closes[-3]
         body_curr = closes[-1] - closes[-2]
@@ -354,12 +340,10 @@ def check_confirmation_candle(closes, highs, lows, direction):
 
         return strong_bullish or bullish_engulfing
     elif direction == "SELL":
-        # Strong Bearish
         body = closes[-2] - closes[-1]
         candle_range = highs[-1] - lows[-1]
         strong_bearish = body > 0 and candle_range > 0 and (body >= 0.5 * candle_range)
 
-        # Bearish Engulfing
         is_curr_bearish = closes[-1] < closes[-2]
         is_prev_bullish = closes[-2] > closes[-3]
         body_curr = closes[-2] - closes[-1]
@@ -370,7 +354,10 @@ def check_confirmation_candle(closes, highs, lows, direction):
     return False
 
 def analyze_timeframe(pair, interval, bypass_cache=False):
-    """المرحلة الأولى: فحص شروط الـ Setup الأساسية فقط (لا يشمل Pullback أو الشموع)"""
+    """المرحلة الأولى: فحص شروط الـ Setup
+    - 1H/4H: RSI(Optional) + MACD + EMA200 + Trend + SR Filter (تحديد اتجاه السوق)
+    - 15min: RSI(Optional) + MACD فقط (فريم دخول، Pullback/Confirmation كيتفحصو فـ analyze_pair)
+    """
     if bypass_cache:
         result = get_price_data(pair, interval, bypass_cache=True)
     else:
@@ -389,22 +376,56 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
         return None
 
     current_price = closes[-1]
+
+    if interval == "15min":
+        # فريم الدخول فقط: MACD + RSI(Optional). لا EMA200 ولا Trend ولا SR هنا.
+        buy_checks = {
+            "RSI":  True,
+            "MACD": macd > signal,
+        }
+        sell_checks = {
+            "RSI":  True,
+            "MACD": macd < signal,
+        }
+
+        buy_ready = buy_checks["MACD"]
+        sell_ready = sell_checks["MACD"]
+
+        if buy_ready:
+            return {
+                "direction": "BUY",
+                "rsi": rsi,
+                "atr": atr,
+                "price": current_price,
+                "ema200": None,
+                "trend": None
+            }
+        elif sell_ready:
+            return {
+                "direction": "SELL",
+                "rsi": rsi,
+                "atr": atr,
+                "price": current_price,
+                "ema200": None,
+                "trend": None
+            }
+
+        return None
+
+    # ---- 1H / 4H: يحتفظان بمنطقهما الكامل لتحديد اتجاه السوق ----
     ema200 = calc_ema(closes, 200)
 
     if ema200 is None:
         return None
 
-    # Trend Structure
     trend = get_trend_structure(closes)
 
-    # Support / Resistance
     support, resistance = get_support_resistance(highs, lows)
 
     resistance_distance = abs(resistance - current_price)
     support_distance = abs(current_price - support)
     sr_threshold = round(atr * 1.2, 6)
 
-    # BUY checks
     buy_checks = {
         "RSI":    True,
         "MACD":   macd > signal,
@@ -415,7 +436,6 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
     buy_sr_ok = resistance_distance > sr_threshold
     buy_ready = buy_score == 4 and buy_sr_ok
 
-    # SELL checks
     sell_checks = {
         "RSI":    True,
         "MACD":   macd < signal,
@@ -425,23 +445,6 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
     sell_score = sum(sell_checks.values())
     sell_sr_ok = support_distance > sr_threshold
     sell_ready = sell_score == 4 and sell_sr_ok
-
-    if interval == "15min":
-        # Disable EMA200, Trend, and SR filters for 15min by setting their checks to True
-        buy_checks["EMA200"] = True
-        buy_checks["Trend"] = True
-        buy_sr_ok = True  # SR filter for BUY is always true for 15min
-
-        sell_checks["EMA200"] = True
-        sell_checks["Trend"] = True
-        sell_sr_ok = True  # SR filter for SELL is always true for 15min
-
-        # Recalculate scores and ready flags based on modified checks
-        buy_score = sum(buy_checks.values())
-        buy_ready = buy_score == 4 and buy_sr_ok
-
-        sell_score = sum(sell_checks.values())
-        sell_ready = sell_score == 4 and sell_sr_ok
 
     if buy_ready:
         return {
@@ -466,14 +469,17 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
     return None
 
 def check_setup_alignment(pair, bypass_cache=False):
-    """تحديد ما إذا كان هناك Setup متوافق على الأطر الزمنية"""
+    """
+    يجب أن يتوافق 15min مع 1H أو 4H على الأقل.
+    15min لا يمكن أبداً أن يصدر إشارة بمفرده — إذا 1H و 4H كلاهما
+    يعطيان اتجاهاً معاكساً لـ 15min (أو لا يعطيان شيئاً متوافقاً)، تُرفض الإشارة.
+    """
     results = {}
     for tf in ["15min", "1h", "4h"]:
         res = analyze_timeframe(pair, tf, bypass_cache=bypass_cache)
         if res:
             results[tf] = res
 
-    # فريم 15min إلزامي دائمًا كقاعدة للـ Setup
     if "15min" not in results:
         return None
 
@@ -482,7 +488,7 @@ def check_setup_alignment(pair, bypass_cache=False):
     align_1h = ("1h" in results and results["1h"]["direction"] == m15_direction)
     align_4h = ("4h" in results and results["4h"]["direction"] == m15_direction)
 
-    # يجب أن تتوافق 15min مع 1H أو 4H على الأقل
+    # يجب أن تتوافق 15min مع 1H أو 4H على الأقل، وإلا لا إشارة إطلاقاً
     if not (align_1h or align_4h):
         return None
 
@@ -499,14 +505,11 @@ def check_setup_alignment(pair, bypass_cache=False):
     }
 
 def analyze_pair(pair, bypass_cache=False):
-    """الدالة الرئيسية لفحص وتأكيد الدخول بناءً على Setup ثم الـ Trigger"""
     global active_setups
 
-    # 1. المرحلة الأولى: فحص وتحديث توافق الـ Setup
     setup = check_setup_alignment(pair, bypass_cache=bypass_cache)
 
     if setup:
-        # إذا تحقق التوافق، يتم حفظ أو تحديث الـ Setup النشط
         active_setups[pair] = {
             "direction": setup["direction"],
             "time": time.time(),
@@ -514,11 +517,9 @@ def analyze_pair(pair, bypass_cache=False):
             "details": setup["details"]
         }
     else:
-        # إذا فقد أي شرط أساسي، يتم إلغاء الـ Setup فوراً
         active_setups.pop(pair, None)
         return None
 
-    # 2. المرحلة الثانية: مراقبة الـ Trigger على فريم 15min فقط
     setup_data = active_setups[pair]
     setup_direction = setup_data["direction"]
 
@@ -537,7 +538,6 @@ def analyze_pair(pair, bypass_cache=False):
     if not atr or not ema200_series:
         return None
 
-    # فحص الـ Pullback إلى EMA200 (Touch or Near في الشموع الـ 3 الأخيرة)
     pullback_ok = False
     near_threshold = 0.25 * atr
     for i in [-1, -2, -3]:
@@ -552,14 +552,11 @@ def analyze_pair(pair, bypass_cache=False):
                 pullback_ok = True
                 break
 
-    # فحص شمعة التأكيد (Confirmation Candle)
     confirmed_ok = check_confirmation_candle(closes, highs, lows, setup_direction)
 
-    # إذا لم يتحقق الـ Trigger حتى الآن، ننتظر الدورة القادمة
     if not (pullback_ok and confirmed_ok):
         return None
 
-    # عند تحقق الـ Setup والـ Trigger معاً، نمرر الصفقات لحساب الأهداف
     main_15 = setup_data["details"]["15min"]
     price = main_15["price"]
     atr = main_15["atr"]
@@ -626,7 +623,6 @@ def get_debug_report(pair):
         support_distance = abs(current_price - support)
         sr_threshold = round(atr * 1.2, 6)
 
-        # ---------- BUY conditions ----------
         buy_checks = {
             "RSI": True,
             "MACD": macd > signal,
@@ -637,7 +633,6 @@ def get_debug_report(pair):
         buy_sr_ok = resistance_distance > sr_threshold
         buy_ready = buy_score == 4 and buy_sr_ok
 
-        # ---------- SELL conditions ----------
         sell_checks = {
             "RSI": True,
             "MACD": macd < signal,
@@ -648,7 +643,6 @@ def get_debug_report(pair):
         sell_sr_ok = support_distance > sr_threshold
         sell_ready = sell_score == 4 and sell_sr_ok
 
-        # Extra checks for 15min Trigger
         pullback_ok = False
         buy_confirmed = False
         sell_confirmed = False
@@ -710,7 +704,6 @@ def get_debug_report(pair):
 
         macd_diff = round(data['macd'] - data['signal'], 6)
 
-        # ---------- BUY ----------
         lines.append("BUY")
         lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
@@ -722,7 +715,6 @@ def get_debug_report(pair):
         lines.append(f"Score: {data['buy_score']}/4")
         lines.append(f"{'✅' if data['buy_sr_ok'] else '❌'} SR Filter → Resistance Dist = {round(data['resistance_distance'],6)} | Required > {data['sr_threshold']}")
 
-        # ---------- SELL ----------
         lines.append("")
         lines.append("SELL")
         lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
@@ -747,7 +739,6 @@ def get_strength_label(strength):
         return "⭐ ضعيفة"
 
 def check_pre_signal(pair, rsi_15):
-    """كيشوف واش RSI ديال 15min + 1h كيقتربو من منطقة الإشارة"""
     result_1h = get_cached_data(pair, "1h") or get_price_data(pair, "1h")
     if not result_1h:
         return None, None
@@ -792,7 +783,7 @@ def monitor_trade(trade):
     now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
 
     for i in range(3):
-        time.sleep(600)  # كل 10 دقائق
+        time.sleep(600)
         if not waiting_confirmation:
             return
 
@@ -886,7 +877,6 @@ def run_server():
     server.serve_forever()
 
 def send_hourly_report(pairs_status):
-    """كيبعت تقرير كل ساعة عن حالة السوق"""
     now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
     msg = f"🕐 <b>تقرير السوق — {now_str}</b>\n━━━━━━━━━━━━━━━━\n"
 
@@ -910,7 +900,6 @@ def send_hourly_report(pairs_status):
         if reason:
             msg += f"  🔍 {reason}\n"
 
-    # أخبار اليوم
     all_news = []
     for pair in pairs_status:
         news = get_news_summary(pair)
@@ -976,10 +965,8 @@ def main_loop():
                 time.sleep(900)
                 continue
 
-            # جيب كل البيانات مرة واحدة فبداية كل run
             fetch_all_data()
 
-            # تقرير كل ساعة
             if now.hour != last_report_hour and now.minute < 15 and not waiting_confirmation:
                 last_report_hour = now.hour
                 pairs_status = {}
@@ -1000,14 +987,12 @@ def main_loop():
                     pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
                 send_hourly_report(pairs_status)
 
-                # 🔍 DEBUG MODE
                 for pair in PAIRS:
                     print(f"Starting debug for {pair}")
                     debug_text = get_debug_report(pair)
                     send_telegram(debug_text)
                     print(f"Debug sent for {pair}")
 
-            # تحذير مسبق 15 دقيقة قبل الإشارة
             if not waiting_confirmation:
                 for pair in PAIRS:
                     result = get_cached_data(pair, "15min")
@@ -1031,16 +1016,13 @@ def main_loop():
 
             if not waiting_confirmation:
                 for pair in PAIRS:
-                    # 1. فحص توافق الـ Setup والـ Trigger معاً (باستعمال الكاش)
                     trade = analyze_pair(pair, bypass_cache=False)
                     if not trade:
                         continue
 
-                    # 🔄 المرحلة الرابعة: Final Recheck (فحص حقيقي للاتجاه بدون كاش لضمان بقائه صحيحاً)
                     print(f"🔄 Rechecking conditions for {pair} before sending...")
                     setup_direction = "BUY" if "BUY" in trade["direction"] else "SELL"
-                    
-                    # الـ Recheck يتحقق فقط من أن الاتجاه الأساسي مازال قائماً بدون إعادة فحص pullback أو شمعة التأكيد
+
                     recheck_setup = check_setup_alignment(pair, bypass_cache=True)
                     if not recheck_setup or recheck_setup["direction"] != setup_direction:
                         print(f"❌ Final Recheck failed or direction changed for {pair}. Cancelled.")
@@ -1120,7 +1102,7 @@ def main_loop():
 
                     pending_trade = trade
                     send_with_buttons(msg, trade)
-                    active_setups.pop(pair, None)  # ريسيت للـ Setup بعد إرسال التنبيه للتنفيذ
+                    active_setups.pop(pair, None)
                     break
 
         except Exception:
