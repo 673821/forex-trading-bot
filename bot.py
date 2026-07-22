@@ -87,13 +87,6 @@ def get_high_impact_news(pair):
         danger_events = []
         warning_events = []
         for event in events:
-            print(
-                event.get("title"),
-                event.get("currency"),
-                event.get("impact"),
-                event.get("date")
-            )
-
             if event.get("impact") != "High":
                 continue
             if event.get("currency") not in currencies:
@@ -354,10 +347,6 @@ def check_confirmation_candle(closes, highs, lows, direction):
     return False
 
 def analyze_timeframe(pair, interval, bypass_cache=False):
-    """المرحلة الأولى: فحص شروط الـ Setup
-    - 1H/4H: RSI(Optional) + MACD + EMA200 + Trend + SR Filter (تحديد اتجاه السوق)
-    - 15min: RSI(Optional) + MACD فقط (فريم دخول، Pullback/Confirmation كيتفحصو فـ analyze_pair)
-    """
     if bypass_cache:
         result = get_price_data(pair, interval, bypass_cache=True)
     else:
@@ -378,7 +367,6 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
     current_price = closes[-1]
 
     if interval == "15min":
-        # فريم الدخول فقط: MACD + RSI(Optional). لا EMA200 ولا Trend ولا SR هنا.
         buy_checks = {
             "RSI":  True,
             "MACD": macd > signal,
@@ -412,7 +400,6 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
 
         return None
 
-    # ---- 1H / 4H: يحتفظان بمنطقهما الكامل لتحديد اتجاه السوق ----
     ema200 = calc_ema(closes, 200)
 
     if ema200 is None:
@@ -469,11 +456,6 @@ def analyze_timeframe(pair, interval, bypass_cache=False):
     return None
 
 def check_setup_alignment(pair, bypass_cache=False):
-    """
-    يجب أن يتوافق 15min مع 1H أو 4H على الأقل.
-    15min لا يمكن أبداً أن يصدر إشارة بمفرده — إذا 1H و 4H كلاهما
-    يعطيان اتجاهاً معاكساً لـ 15min (أو لا يعطيان شيئاً متوافقاً)، تُرفض الإشارة.
-    """
     results = {}
     for tf in ["15min", "1h", "4h"]:
         res = analyze_timeframe(pair, tf, bypass_cache=bypass_cache)
@@ -488,7 +470,6 @@ def check_setup_alignment(pair, bypass_cache=False):
     align_1h = ("1h" in results and results["1h"]["direction"] == m15_direction)
     align_4h = ("4h" in results and results["4h"]["direction"] == m15_direction)
 
-    # يجب أن تتوافق 15min مع 1H أو 4H على الأقل، وإلا لا إشارة إطلاقاً
     if not (align_1h or align_4h):
         return None
 
@@ -589,7 +570,6 @@ def analyze_pair(pair, bypass_cache=False):
     }
 
 def get_debug_report(pair):
-    print(f"Enter get_debug_report({pair})")
     tf_results = {}
 
     for tf in TIMEFRAMES:
@@ -703,31 +683,39 @@ def get_debug_report(pair):
             continue
 
         macd_diff = round(data['macd'] - data['signal'], 6)
+        is_entry_tf = (tf == "15min")
 
         lines.append("BUY")
         lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['buy_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
-        lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']}")
-        if tf == "15min":
+        if not is_entry_tf:
+            lines.append(f"{'✅' if data['buy_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
+            lines.append(f"{'✅' if data['buy_checks']['Trend'] else '❌'} Trend = {data['trend']}")
+        if is_entry_tf:
             lines.append(f"{'✅' if data['pullback_ok'] else '❌'} Pullback (Touch/Near)")
             lines.append(f"{'✅' if data['buy_confirmed'] else '❌'} Confirmation (Strong/Engulfing)")
-        lines.append(f"Score: {data['buy_score']}/4")
-        lines.append(f"{'✅' if data['buy_sr_ok'] else '❌'} SR Filter → Resistance Dist = {round(data['resistance_distance'],6)} | Required > {data['sr_threshold']}")
+            entry_buy_score = sum([data['buy_checks']['MACD'], data['pullback_ok'], data['buy_confirmed']])
+            lines.append(f"Score: {entry_buy_score}/3")
+        else:
+            lines.append(f"Score: {data['buy_score']}/4")
+            lines.append(f"{'✅' if data['buy_sr_ok'] else '❌'} SR Filter → Resistance Dist = {round(data['resistance_distance'],6)} | Required > {data['sr_threshold']}")
 
         lines.append("")
         lines.append("SELL")
         lines.append(f"ℹ️ RSI = {data['rsi']} (Optional)")
         lines.append(f"{'✅' if data['sell_checks']['MACD'] else '❌'} MACD = {data['macd']} | Signal = {data['signal']} | Diff = {'+' if macd_diff >= 0 else ''}{macd_diff}")
-        lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
-        lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']}")
-        if tf == "15min":
+        if not is_entry_tf:
+            lines.append(f"{'✅' if data['sell_checks']['EMA200'] else '❌'} EMA200 → Price = {round(data['current_price'],6)} | EMA200 = {round(data['ema200'],6)}")
+            lines.append(f"{'✅' if data['sell_checks']['Trend'] else '❌'} Trend = {data['trend']}")
+        if is_entry_tf:
             lines.append(f"{'✅' if data['pullback_ok'] else '❌'} Pullback (Touch/Near)")
             lines.append(f"{'✅' if data['sell_confirmed'] else '❌'} Confirmation (Strong/Engulfing)")
-        lines.append(f"Score: {data['sell_score']}/4")
-        lines.append(f"{'✅' if data['sell_sr_ok'] else '❌'} SR Filter → Support Dist = {round(data['support_distance'],6)} | Required > {data['sr_threshold']}")
+            entry_sell_score = sum([data['sell_checks']['MACD'], data['pullback_ok'], data['sell_confirmed']])
+            lines.append(f"Score: {entry_sell_score}/3")
+        else:
+            lines.append(f"Score: {data['sell_score']}/4")
+            lines.append(f"{'✅' if data['sell_sr_ok'] else '❌'} SR Filter → Support Dist = {round(data['support_distance'],6)} | Required > {data['sr_threshold']}")
 
-    print(f"Exit get_debug_report({pair})")
     return "\n".join(lines)
 
 def get_strength_label(strength):
