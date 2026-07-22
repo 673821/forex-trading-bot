@@ -578,7 +578,7 @@ def get_debug_report(pair):
     lines = [f"🔍 {pair} - Market Status Report", "━━━━━━━━━━━━━━━━"]
 
     # ==================== 15min (SMC Logic) ====================
-    lines.append("15min (Entry Confirmation)")
+    lines.append("15min (SMC Logic)")
     state_key = f"{pair}_15min"
     state = active_setups.get(pair, {})
     direction = state.get("direction", None)
@@ -647,9 +647,9 @@ def get_debug_report(pair):
         b_score = (2 if b_ema and b_trend else (1 if b_ema or b_trend else 0))
         lines.append("BUY")
         if b_ema:
-            lines.append(f"✅ EMA200: Price ({price_1h}) > EMA ({round(ema_1h, 5) if ema_1h else 0})")
+            lines.append(f"✅ EMA200: Price ({price_1h}) &gt; EMA ({round(ema_1h, 5) if ema_1h else 0})")
         else:
-            lines.append(f"❌ EMA200: Price < EMA ({round(ema_1h, 5) if ema_1h else 0}) (Bullish ❌)")
+            lines.append(f"❌ EMA200: Price &lt; EMA ({round(ema_1h, 5) if ema_1h else 0}) (Bullish ❌)")
         
         if b_trend:
             lines.append("✅ Trend Structure: UP (Higher Highs)")
@@ -664,9 +664,9 @@ def get_debug_report(pair):
         lines.append("")
         lines.append("SELL")
         if s_ema:
-            lines.append(f"✅ EMA200: Price ({price_1h}) < EMA ({round(ema_1h, 5) if ema_1h else 0})")
+            lines.append(f"✅ EMA200: Price ({price_1h}) &lt; EMA ({round(ema_1h, 5) if ema_1h else 0})")
         else:
-            lines.append(f"❌ EMA200: Price > EMA ({round(ema_1h, 5) if ema_1h else 0}) (Bearish ❌)")
+            lines.append(f"❌ EMA200: Price &gt; EMA ({round(ema_1h, 5) if ema_1h else 0}) (Bearish ❌)")
         
         if s_trend:
             lines.append("✅ Trend Structure: DOWN (Lower Highs)")
@@ -691,9 +691,9 @@ def get_debug_report(pair):
         b_score = (2 if b_ema and b_trend else (1 if b_ema or b_trend else 0))
         lines.append("BUY")
         if b_ema:
-            lines.append("✅ EMA200: Price > EMA200")
+            lines.append("✅ EMA200: Price &gt; EMA200")
         else:
-            lines.append("❌ EMA200: Price < EMA200 (Bullish ❌)")
+            lines.append("❌ EMA200: Price &lt; EMA200 (Bullish ❌)")
         
         if b_trend:
             lines.append("✅ Trend Structure: UP")
@@ -708,9 +708,9 @@ def get_debug_report(pair):
         lines.append("")
         lines.append("SELL")
         if s_ema:
-            lines.append("✅ EMA200: Price < EMA200")
+            lines.append("✅ EMA200: Price &lt; EMA200")
         else:
-            lines.append("❌ EMA200: Price > EMA200 (Bearish ❌)")
+            lines.append("❌ EMA200: Price &gt; EMA200 (Bearish ❌)")
         
         if s_trend:
             lines.append("✅ Trend Structure: DOWN")
@@ -799,18 +799,18 @@ def push_to_github(opportunities):
     requests.put(url, headers=headers, json=payload)
 
 def monitor_trade(trade):
-    global waiting_confirmation, pending_trade
-    now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    global waiting_confirmation, pending_trades
+    pair = trade["pair"]
 
     for i in range(3):
         time.sleep(600)  # كل 10 دقائق
-        if not waiting_confirmation:
+        if not waiting_confirmation.get(pair):
             return
 
-        result = get_price_data(trade["pair"])
+        result = get_price_data(pair)
         if not result:
             continue
-        closes, _, _ = result
+        closes = result[0]
         current_price = closes[-1]
 
         if "BUY" in trade["direction"]:
@@ -828,11 +828,11 @@ def monitor_trade(trade):
             f"🕐 {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
         )
 
-    if waiting_confirmation:
-        result = get_price_data(trade["pair"])
+    if waiting_confirmation.get(pair):
+        result = get_price_data(pair)
         current_price = result[0][-1] if result else trade["price"]
         send_telegram(
-            f"🎯 <b>وقت الدخول — {trade['pair']}</b>\n"
+            f"🎯 <b>وقت الدخول — {pair}</b>\n"
             f"━━━━━━━━━━━━━━━━\n"
             f"الإشارة باقية قوية ✅\n"
             f"💰 السعر دابا: <b>{current_price}</b>\n"
@@ -842,8 +842,8 @@ def monitor_trade(trade):
             f"واش واجد تدخل؟ 🚀\n"
             f"🕐 {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
         )
-    waiting_confirmation = False
-    pending_trade = {}
+    waiting_confirmation[pair] = False
+    pending_trades.pop(pair, None)
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -852,7 +852,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is running!")
 
     def do_POST(self):
-        global waiting_confirmation, pending_trade
+        global waiting_confirmation, pending_trades
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
         self.send_response(200)
@@ -866,9 +866,15 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 data = cb.get("data", "")
                 answer_callback(cb["id"])
 
-                if data == "yes" and pending_trade:
-                    waiting_confirmation = True
-                    trade = pending_trade.copy()
+                if "_" in data:
+                    action, pair_key = data.split("_", 1)
+                    pair = next((p for p in pending_trades if p.replace("/", "") == pair_key), None)
+                else:
+                    action, pair = data, None
+
+                if action == "yes" and pair and pair in pending_trades:
+                    waiting_confirmation[pair] = True
+                    trade = pending_trades[pair].copy()
                     send_telegram(
                         f"✅ <b>واخا! غادي نراقب التريد 30 دقيقة</b>\n"
                         f"━━━━━━━━━━━━━━━━\n"
@@ -879,14 +885,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     t.daemon = True
                     t.start()
 
-                elif data == "no":
-                    pending_trade = {}
-                    waiting_confirmation = False
+                elif action == "no" and pair:
+                    pending_trades.pop(pair, None)
+                    waiting_confirmation[pair] = False
                     send_telegram("❌ واخا، تجاوزنا هاد التريد. غادي نكملو نراقبو السوق 👀")
 
-        except Exception:
-            print("Webhook error:")
-            traceback.print_exc()
+        except Exception as e:
+            print(f"Webhook error: {e}")
 
     def log_message(self, format, *args):
         pass
@@ -938,31 +943,34 @@ def send_hourly_report(pairs_status):
     send_telegram(msg)
 
 def main_loop():
-    global pending_trade, waiting_confirmation, active_setups
+    global pending_trades, waiting_confirmation
     time.sleep(5)
     set_webhook()
 
-    try:
-        opportunities = pull_from_github()
-    except Exception:
-        print("⚠️ pull_from_github failed at startup:")
-        traceback.print_exc()
-        opportunities = []
+    opportunities = pull_from_github()
+    
+    # استرداد الذاكرة من ملف opportunities.json في جيت هاب لضمان عدم ضياع التقرير اليومي عند الـ Restart
+    last_daily_report_date = None
+    if opportunities:
+        for op in opportunities:
+            if op.get("type") == "daily_report_sent":
+                last_daily_report_date = op.get("date")
 
     last_report_hour = -1
-    last_daily_report_date = None
-    already_warned = {}
+    last_signal = {}
 
     while True:
         now = datetime.now(timezone.utc)
         now_str = now.strftime("%H:%M UTC")
+        today = now.strftime("%Y-%m-%d")
 
         try:
-            today = now.strftime("%Y-%m-%d")
-
+            # التقرير اليومي محمي 100% ضد الـ Restart ومحمي ضد الـ Drift
             if now.hour >= 21 and last_daily_report_date != today:
                 last_daily_report_date = today
-                today_ops = [o for o in opportunities if o.get("date", "").startswith(today)]
+                
+                # تصفية صفقات اليوم لتجاهل الأسطر الخاصة بحالة الـ Metadata
+                today_ops = [o for o in opportunities if o.get("date", "").startswith(today) and o.get("type") != "daily_report_sent"]
 
                 if not today_ops:
                     send_telegram(
@@ -984,159 +992,131 @@ def main_loop():
                     msg += "━━━━━━━━━━━━━━━━\n⚠️ هاد المعلومات للتعلم فقط"
                     send_telegram(msg)
 
+                # حفظ حالة إرسال التقرير اليومي بشكل دائم على الـ GitHub
+                opportunities.append({
+                    "date": today,
+                    "type": "daily_report_sent"
+                })
+                push_to_github(opportunities)
+                
                 time.sleep(900)
                 continue
 
-            # جلب البيانات بشكل مستمر ومحمي
             fetch_all_data()
 
             # تقرير كل ساعة دقيق ومحمي ضد زحف الدقائق (Drift)
-            if now.hour != last_report_hour and not waiting_confirmation:
+            if now.hour != last_report_hour and not any(waiting_confirmation.values()):
                 last_report_hour = now.hour
-                pairs_status = {}
-                for pair in PAIRS:
-                    market = get_market_summary(pair)
-                    rsi_data = None
-                    reason = None
-                    result = get_cached_data(pair, "15min")
-                    if result:
-                        rsi_data = calc_rsi(result[0])
-                        if rsi_data:
-                            if 40 <= rsi_data <= 60:
-                                reason = f"RSI = {rsi_data} — السوق محايد، مراقب..."
-                            elif rsi_data < 40:
-                                reason = f"RSI = {rsi_data} — قريب من منطقة BUY، مراقب MACD..."
-                            else:
-                                reason = f"RSI = {rsi_data} — قريب من منطقة SELL، مراقب MACD..."
-                    pairs_status[pair] = {"market": market, "rsi_15": rsi_data, "reason": reason}
+                pairs_status = {pair: {} for pair in PAIRS}
                 send_hourly_report(pairs_status)
 
-                # 🔍 DEBUG MODE
-                for pair in PAIRS:
-                    print(f"Starting debug for {pair}")
-                    debug_text = get_debug_report(pair)
-                    send_telegram(debug_text)
-                    print(f"Debug sent for {pair}")
+            # دمج التحليل المستمر لإبقاء الذاكرة نشطة مع تصفية الإرسال فقط وقت الـ Killzone
+            for pair in PAIRS:
+                if waiting_confirmation.get(pair):
+                    continue
 
-            # تحذير مسبق 15 دقيقة قبل الإشارة
-            if not waiting_confirmation:
-                for pair in PAIRS:
-                    result = get_cached_data(pair, "15min")
-                    if result:
-                        rsi_current = calc_rsi(result[0])
-                        if rsi_current:
-                            direction, rsi_val = check_pre_signal(pair, rsi_current)
-                            if direction:
-                                if already_warned.get(pair) != direction:
-                                    already_warned[pair] = direction
-                                    direction_emoji = "📉 SELL" if direction == "SELL" else "📈 BUY"
-                                    send_telegram(
-                                        f"⚠️ <b>تحذير مسبق — {pair}</b>\n"
-                                        f"━━━━━━━━━━━━━━━━\n"
-                                        f"RSI = <b>{rsi_val}</b> — كيقترب من منطقة {direction_emoji}\n"
-                                        f"⏳ كون مستعد — ممكن تجي إشارة فـ 15 دقيقة\n"
-                                        f"🕐 {now_str}"
-                                    )
-                            else:
-                                already_warned.pop(pair, None)
+                # البوت يحلل ويحدث الـ State Machine على مدار 24 ساعة لكي لا تضيع أي حركة
+                trade = analyze_pair(pair)
+                current_direction = "BUY" if trade and "BUY" in trade["direction"] else ("SELL" if trade and "SELL" in trade["direction"] else None)
 
-            if not waiting_confirmation:
-                for pair in PAIRS:
-                    # 1. فحص توافق الـ Setup والـ Trigger معاً (باستعمال الكاش)
-                    trade = analyze_pair(pair, bypass_cache=False)
-                    if not trade:
+                if not current_direction:
+                    last_signal.pop(pair, None)
+                    continue
+
+                # تصفية الدخول الفعلي وإرسال التنبيهات: يتم فقط أثناء جلسات السيولة العالية
+                if not is_killzone():
+                    print(f"⏳ {pair}: فرصة جاهزة ومكتملة الشروط، ولكن تم تأجيلها لعدم دخول الـ Killzone بعد.")
+                    continue
+
+                current_bos_level = trade["details"]["15min"]["bos_level"]
+
+                prev = last_signal.get(pair)
+                if prev is not None:
+                    same_direction = prev["direction"] == current_direction
+                    same_bos = prev["bos_level"] == current_bos_level
+                    if same_direction and same_bos:
                         continue
 
-                    # 🔄 المرحلة الرابعة: Final Recheck (فحص حقيقي للاتجاه بدون كاش لضمان بقائه صحيحاً)
-                    print(f"🔄 Rechecking conditions for {pair} before sending...")
-                    setup_direction = "BUY" if "BUY" in trade["direction"] else "SELL"
-                    
-                    # الـ Recheck يتحقق فقط من أن الاتجاه الأساسي مازال قائماً بدون إعادة فحص pullback أو شمعة التأكيد
-                    recheck_setup = check_setup_alignment(pair, bypass_cache=True)
-                    if not recheck_setup or recheck_setup["direction"] != setup_direction:
-                        print(f"❌ Final Recheck failed or direction changed for {pair}. Cancelled.")
-                        active_setups.pop(pair, None)
-                        continue
+                danger_news, warning_news = get_high_impact_news(pair)
 
-                    danger_news, warning_news = get_high_impact_news(pair)
+                op = {
+                    "date": now.strftime("%Y-%m-%d %H:%M"),
+                    "time": now_str,
+                    "pair": pair,
+                    "direction": trade["direction"],
+                    "price": trade["price"],
+                    "tp": trade["tp"],
+                    "sl": trade["sl"],
+                    "rr": trade["rr"],
+                    "strength": trade["strength"],
+                    "cancelled": bool(danger_news)
+                }
+                opportunities.append(op)
+                push_to_github(opportunities)
 
-                    op = {
-                        "date": now.strftime("%Y-%m-%d %H:%M"),
-                        "time": now_str,
-                        "pair": pair,
-                        "direction": trade["direction"],
-                        "price": trade["price"],
-                        "tp": trade["tp"],
-                        "sl": trade["sl"],
-                        "rr": trade["rr"],
-                        "strength": trade["strength"],
-                        "cancelled": bool(danger_news)
-                    }
-                    opportunities.append(op)
-                    push_to_github(opportunities)
-
-                    if danger_news:
-                        send_telegram(
-                            f"⚠️ <b>تحذير — {pair}</b>\n"
-                            f"━━━━━━━━━━━━━━━━\n"
-                            f"كانت كاينة إشارة {trade['direction']} ولكن تم إلغاؤها:\n\n"
-                            + "\n".join([f"🔴 {n}" for n in danger_news]) +
-                            f"\n\n⏳ استنى تعدي الأخبار\n🕐 {now_str}"
-                        )
-                        active_setups.pop(pair, None)
-                        continue
-
-                    tfs_text = " + ".join(trade["confirmed_tfs"])
-                    strength_text = get_strength_label(trade["strength"])
-                    details_lines = "".join([f"  • {tf}: RSI {data['rsi']}\n" for tf, data in trade["details"].items()])
-
-                    news_warning = ""
-                    if warning_news:
-                        news_warning = "\n⚠️ <b>أخبار قادمة:</b>\n" + "\n".join([f"🟡 {n}" for n in warning_news]) + "\n"
-
-                    market = get_market_summary(trade['pair'])
-                    today_news = get_news_summary(trade['pair'])
-
-                    market_section = ""
-                    if market:
-                        market_section = (
-                            f"\n📊 <b>السوق اليوم:</b>\n"
-                            f"  {market['direction_emoji']} التغيير: {market['change']:+.6f} ({market['change_pct']:+.3f}%)\n"
-                            f"  🔝 أعلى: {market['high_day']} | 🔻 أدنى: {market['low_day']}\n"
-                            f"  {market['last_hour_emoji']} آخر ساعة: {market['last_hour_change']:+.6f}\n"
-                        )
-
-                    news_section = ""
-                    if today_news:
-                        news_section = f"\n📰 <b>أخبار اليوم:</b>\n" + "\n".join([f"  {n}" for n in today_news]) + "\n"
-
-                    msg = (
-                        f"🔔 <b>فرصة تريد — {trade['pair']}</b>\n"
+                if danger_news:
+                    reset_pair_states(pair)  # إلغاء الـ state بالكامل في حالة الأخبار الخطيرة
+                    last_signal.pop(pair, None)
+                    send_telegram(
+                        f"⚠️ <b>تحذير — {pair}</b>\n"
                         f"━━━━━━━━━━━━━━━━\n"
-                        f"📊 الإشارة: <b>{trade['direction']}</b>\n"
-                        f"💪 القوة: <b>{strength_text}</b>\n"
-                        f"⏱ مؤكدة على: <b>{tfs_text}</b>\n"
-                        f"{market_section}"
-                        f"{news_section}"
-                        f"\n💰 السعر الحالي: <b>{trade['price']}</b>\n"
-                        f"🎯 TP: <b>{trade['tp']}</b>\n"
-                        f"🛑 SL: <b>{trade['sl']}</b>\n"
-                        f"⚖️ R/R: <b>1:{trade['rr']}</b>\n\n"
-                        f"📋 RSI Details:\n{details_lines}"
-                        f"{news_warning}"
-                        f"━━━━━━━━━━━━━━━━\n"
-                        f"🕐 {now_str}\n\n"
-                        f"واش بغيتي تدخل هاد التريد؟"
+                        f"كانت كاينة إشارة {trade['direction']} ولكن تم إلغاؤها:\n\n"
+                        + "\n".join([f"🔴 {n}" for n in danger_news]) +
+                        f"\n\n⏳ استنى تعدي الأخبار\n🕐 {now_str}"
+                    )
+                    continue
+
+                tfs_text = " + ".join(trade["confirmed_tfs"])
+                strength_text = get_strength_label(trade["strength"])
+
+                news_warning = ""
+                if warning_news:
+                    news_warning = "\n⚠️ <b>أخبار قادمة:</b>\n" + "\n".join([f"🟡 {n}" for n in warning_news]) + "\n"
+
+                market = get_market_summary(trade['pair'])
+                today_news = get_news_summary(trade['pair'])
+
+                market_section = ""
+                if market:
+                    market_section = (
+                        f"\n📊 <b>السوق اليوم:</b>\n"
+                        f"  {market['direction_emoji']} التغيير: {market['change']:+.6f} ({market['change_pct']:+.3f}%)\n"
+                        f"  🔝 أعلى: {market['high_day']} | 🔻 أدنى: {market['low_day']}\n"
+                        f"  {market['last_hour_emoji']} آخر ساعة: {market['last_hour_change']:+.6f}\n"
                     )
 
-                    pending_trade = trade
-                    send_with_buttons(msg, trade)
-                    active_setups.pop(pair, None)  # ريسيت للـ Setup بعد إرسال التنبيه للتنفيذ
-                    break
+                news_section = ""
+                if today_news:
+                    news_section = f"\n📰 <b>أخبار اليوم:</b>\n" + "\n".join([f"  {n}" for n in today_news]) + "\n"
 
-        except Exception:
-            print("Error in main_loop:")
-            traceback.print_exc()
+                msg = (
+                    f"🔔 <b>فرصة تريد — {trade['pair']}</b>\n"
+                    f"━━━━━━━━━━━━━━━━\n"
+                    f"📊 الإشارة: <b>{trade['direction']}</b>\n"
+                    f"💪 القوة: <b>{strength_text}</b>\n"
+                    f"⏱ مؤكدة على: <b>{tfs_text}</b>\n"
+                    f"📐 السلسلة: Liquidity Sweep ✅ → BOS ✅ → Pullback (OB/FVG) ✅ → Candle Confirmation ✅\n"
+                    f"{market_section}"
+                    f"{news_section}"
+                    f"\n💰 السعر الحالي: <b>{trade['price']}</b>\n"
+                    f"🎯 TP: <b>{trade['tp']}</b>\n"
+                    f"🛑 SL: <b>{trade['sl']}</b>\n"
+                    f"⚖️ R/R: <b>1:{trade['rr']}</b>\n\n"
+                    f"{news_warning}"
+                    f"━━━━━━━━━━━━━━━━\n"
+                    f"🕐 {now_str}\n\n"
+                    f"واش بغيتي تدخل هاد التريد؟"
+                )
+
+                pending_trades[pair] = trade
+                last_signal[pair] = {
+                    "direction": current_direction,
+                    "bos_level": current_bos_level,
+                }
+                send_with_buttons(msg, trade)
+
+        except Exception as e:
+            print(f"Error: {e}")
 
         time.sleep(900)
 
@@ -1145,3 +1125,4 @@ if __name__ == "__main__":
     server_thread.daemon = True
     server_thread.start()
     main_loop()
+ 
