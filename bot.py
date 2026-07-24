@@ -18,6 +18,7 @@ PORT = int(os.environ.get("PORT", 8080))
 PAIRS = ["EUR/USD", "GBP/USD"]
 TIMEFRAMES = ["15min", "1h", "4h"]
 OPPORTUNITIES_FILE = "opportunities.json"
+CANCELLED_FILE = "cancelled_opportunities.json"
 
 PAIR_CURRENCIES = {
     "EUR/USD": ["EUR", "USD"],
@@ -30,6 +31,9 @@ waiting_confirmation = False
 active_setups = {}
 
 data_cache = {}
+
+cancelled_setups = []
+
 
 def fetch_all_data():
     global data_cache
@@ -766,6 +770,53 @@ def push_to_github(opportunities):
     payload = {"message": "update opportunities", "content": encoded, "sha": sha}
     requests.put(url, headers=headers, json=payload)
 
+
+# =========================
+# تسجيل الـ Setups الملغاة (منفصل تماماً عن منطق البوت)
+# =========================
+
+def pull_cancelled_from_github():
+    if not GH_TOKEN or not GITHUB_REPO:
+        return []
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CANCELLED_FILE}"
+    headers = {"Authorization": f"token {GH_TOKEN}"}
+    r = requests.get(url, headers=headers)
+    if r.status_code != 200:
+        return []
+    content = base64.b64decode(r.json()["content"]).decode()
+    try:
+        return json.loads(content)
+    except:
+        return []
+
+def push_cancelled_to_github(cancelled_list):
+    if not GH_TOKEN or not GITHUB_REPO:
+        return
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CANCELLED_FILE}"
+    headers = {"Authorization": f"token {GH_TOKEN}"}
+    r = requests.get(url, headers=headers)
+    sha = r.json().get("sha", "") if r.status_code == 200 else ""
+    content = json.dumps(cancelled_list, ensure_ascii=False, indent=2)
+    encoded = base64.b64encode(content.encode()).decode()
+    payload = {"message": "log cancelled setup", "content": encoded, "sha": sha}
+    requests.put(url, headers=headers, json=payload)
+
+def log_cancelled_setup(pair, direction, reason, extra=None):
+    """يسجل Setup اتلغى قبل ما يوصل للنهاية.
+    Read/Write منفصل تماماً عن opportunities.json — لا يؤثر على أي قرار فمنطق البوت."""
+    now = datetime.now(timezone.utc)
+    entry = {
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+        "pair": pair,
+        "direction": direction,
+        "reason": reason,
+    }
+    if extra:
+        entry.update(extra)
+    cancelled_setups.append(entry)
+    push_cancelled_to_github(cancelled_setups)
+
+
 def monitor_trade(trade):
     global waiting_confirmation, pending_trade
     now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
@@ -904,7 +955,7 @@ def send_hourly_report(pairs_status):
     send_telegram(msg)
 
 def main_loop():
-    global pending_trade, waiting_confirmation, active_setups
+    global pending_trade, waiting_confirmation, active_setups, cancelled_setups
     time.sleep(5)
     set_webhook()
 
@@ -914,6 +965,13 @@ def main_loop():
         print("⚠️ pull_from_github failed at startup:")
         traceback.print_exc()
         opportunities = []
+
+    try:
+        cancelled_setups = pull_cancelled_from_github()
+    except Exception:
+        print("⚠️ pull_cancelled_from_github failed at startup:")
+        traceback.print_exc()
+        cancelled_setups = []
 
     last_report_hour = -1
     last_daily_report_date = None
@@ -1014,6 +1072,15 @@ def main_loop():
                     recheck_setup = check_setup_alignment(pair, bypass_cache=True)
                     if not recheck_setup or recheck_setup["direction"] != setup_direction:
                         print(f"❌ Final Recheck failed or direction changed for {pair}. Cancelled.")
+                        log_cancelled_setup(
+                            pair, setup_direction,
+                            reason="FINAL_RECHECK_FAILED",
+                            extra={
+                                "price": trade.get("price"),
+                                "tp": trade.get("tp"),
+                                "sl": trade.get("sl")
+                            }
+                        )
                         active_setups.pop(pair, None)
                         continue
 
