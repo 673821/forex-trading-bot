@@ -754,5 +754,65 @@
     "rr": 1.5,
     "strength": 2,
     "cancelled": false
+  },
+  {
+    "date": "2026-07-31 11:12",
+    "time": "11:12 UTC",
+    "pair": "GBP/USD",
+    "direction": "SELL 📉",
+    "price": 1.3442,
+    "tp": 1.34358,
+    "sl": 1.34461,
+    "rr": 1.5,
+    "strength": 2,
+    "cancelled": false,
+    "timestamp": 1785496356.395575,
+    "market_info": {
+      "atr": 0.000899,
+      "current_price": 1.3442
+    },
+    "htf_info": {
+      "h1_bias": "SELL",
+      "h1_choch_seen": true,
+      "h1_bos_seen": false,
+      "h1_major_swing_high": 1.34769,
+      "h1_major_swing_low": 1.33332,
+      "h4_bias": "BUY",
+      "h4_choch_seen": true,
+      "h4_bos_seen": true,
+      "h4_major_swing_high": 1.33107,
+      "h4_major_swing_low": 1.32795
+    },
+    "smc_info": {
+      "sweep_level": 1.34529,
+      "candles_since_sweep": 4,
+      "bos_level": 1.34412,
+      "candles_since_bos": 9,
+      "ob_low": 1.34495,
+      "ob_high": 1.34622,
+      "fvg_low": 1.34463,
+      "fvg_high": 1.34495
+    },
+    "entry_info": {
+      "entry_price": 1.3442,
+      "tp": 1.34358,
+      "sl": 1.34461,
+      "rr": 1.5
+    },
+    "pullback_info": {
+      "pullback_boundary": 1.34463,
+      "touched_ob_or_fvg": true
+    },
+    "candle_confirmation_info": {
+      "pattern": "Strong Bearish Candle",
+      "open": 1.34449,
+      "high": 1.34451,
+      "low": 1.34371,
+      "close": 1.3442
+    },
+    "swing_info": {
+      "last_swing_high_15m": 1.34682,
+      "last_swing_low_15m": 1.34358
+    }
   }
 ]
