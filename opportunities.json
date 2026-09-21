@@ -2734,5 +2734,65 @@
       "last_swing_high_15m": 1.14861,
       "last_swing_low_15m": 1.14713
     }
+  },
+  {
+    "date": "2026-09-21 10:11",
+    "time": "10:11 UTC",
+    "pair": "GBP/USD",
+    "direction": "BUY 📈",
+    "price": 1.33848,
+    "tp": 1.33898,
+    "sl": 1.33815,
+    "rr": 1.5,
+    "strength": 1,
+    "cancelled": false,
+    "timestamp": 1789985488.325589,
+    "market_info": {
+      "atr": 0.000551,
+      "current_price": 1.33848
+    },
+    "htf_info": {
+      "h1_bias": "SELL",
+      "h1_choch_seen": true,
+      "h1_bos_seen": true,
+      "h1_major_swing_high": 1.33969,
+      "h1_major_swing_low": 1.3376,
+      "h4_bias": "SELL",
+      "h4_choch_seen": true,
+      "h4_bos_seen": true,
+      "h4_major_swing_high": 1.34077,
+      "h4_major_swing_low": 1.33355
+    },
+    "smc_info": {
+      "sweep_level": 1.33744,
+      "candles_since_sweep": 6,
+      "bos_level": 1.33836,
+      "candles_since_bos": 6,
+      "ob_low": 1.33763,
+      "ob_high": 1.33799,
+      "fvg_low": 1.33763,
+      "fvg_high": 1.33799
+    },
+    "entry_info": {
+      "entry_price": 1.33848,
+      "tp": 1.33898,
+      "sl": 1.33815,
+      "rr": 1.5
+    },
+    "pullback_info": {
+      "pullback_boundary": 1.33799,
+      "touched_ob_or_fvg": true
+    },
+    "candle_confirmation_info": {
+      "pattern": "Bullish Engulfing",
+      "open": 1.33821,
+      "high": 1.33851,
+      "low": 1.33821,
+      "close": 1.33848
+    },
+    "swing_info": {
+      "last_swing_high_15m": 1.33888,
+      "last_swing_low_15m": 1.33697
+    }
   }
 ]
