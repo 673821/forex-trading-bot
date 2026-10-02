@@ -3334,5 +3334,65 @@
       "last_swing_high_15m": 1.32368,
       "last_swing_low_15m": 1.31973
     }
+  },
+  {
+    "date": "2026-10-02 15:38",
+    "time": "15:38 UTC",
+    "pair": "EUR/USD",
+    "direction": "BUY 📈",
+    "price": 1.12638,
+    "tp": 1.12845,
+    "sl": 1.125,
+    "rr": 1.5,
+    "strength": 1,
+    "cancelled": false,
+    "timestamp": 1790955483.352199,
+    "market_info": {
+      "atr": 0.00138,
+      "current_price": 1.12638
+    },
+    "htf_info": {
+      "h1_bias": "SELL",
+      "h1_choch_seen": false,
+      "h1_bos_seen": false,
+      "h1_major_swing_high": 1.1337,
+      "h1_major_swing_low": 1.12327,
+      "h4_bias": "SELL",
+      "h4_choch_seen": false,
+      "h4_bos_seen": false,
+      "h4_major_swing_high": 1.13797,
+      "h4_major_swing_low": 1.12159
+    },
+    "smc_info": {
+      "sweep_level": 1.12281,
+      "candles_since_sweep": 7,
+      "bos_level": 1.12685,
+      "candles_since_bos": 4,
+      "ob_low": 1.12433,
+      "ob_high": 1.12522,
+      "fvg_low": 1.12537,
+      "fvg_high": 1.12725
+    },
+    "entry_info": {
+      "entry_price": 1.12638,
+      "tp": 1.12845,
+      "sl": 1.125,
+      "rr": 1.5
+    },
+    "pullback_info": {
+      "pullback_boundary": 1.12725,
+      "touched_ob_or_fvg": true
+    },
+    "candle_confirmation_info": {
+      "pattern": "Strong Bullish Candle",
+      "open": 1.12599,
+      "high": 1.12643,
+      "low": 1.12595,
+      "close": 1.12638
+    },
+    "swing_info": {
+      "last_swing_high_15m": 1.12861,
+      "last_swing_low_15m": 1.12218
+    }
   }
 ]
